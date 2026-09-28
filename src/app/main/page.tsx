@@ -396,7 +396,9 @@ export default function MainTable() {
               editingCell?.columnId === columnId;
             if (isEditing) {
               return (
-                <div className="absolute inset-0 z-10 box-border flex w-full items-center overflow-visible border-2 border-blue-500">
+               <div className="absolute inset-0 z-10 box-border flex w-full items-center overflow-visible">
+                <div className="pointer-events-none absolute inset-0 z-20 border-2 border-blue-500" />
+
                   <InlineCellEditor
                     key={`${row.original.id}-${columnId}`}
                     value={value as string | number}

@@ -85,15 +85,25 @@ export function InlineCellEditor<TValue = string>({
 
   const [error, setError] = useState<string | null>(null);
 
-  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+ const inputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+ const editorRef = useRef<HTMLDivElement | null>(null);
 
   // Store the original value when editing begins.
   const originalValueRef = useRef<TValue>(value);
   const isCommittingRef = useRef(false);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  if (inputRef.current) {
+    inputRef.current.focus();
+    return;
+  }
+
+  const focusable = editorRef.current?.querySelector<HTMLElement>(
+    'button, input, select, [tabindex]:not([tabindex="-1"])',
+  );
+
+  focusable?.focus();
+}, []);
 
   const resolveValue = (nextDraft: string): TValue => {
     if (parseValue) return parseValue(nextDraft);
@@ -225,7 +235,7 @@ export function InlineCellEditor<TValue = string>({
 
   if (editorType === "select") {
     return (
-      <div className={editorWrapperClasses}>
+      <div ref={editorRef} className={editorWrapperClasses}>
         <Select
           value={draft}
           onValueChange={(nextValue) => commitDraftValue(nextValue ?? "")}
@@ -257,7 +267,7 @@ export function InlineCellEditor<TValue = string>({
 
   if (editorType === "date") {
     return (
-      <div className={editorWrapperClasses}>
+      <div ref={editorRef} className={editorWrapperClasses}>
         <DatePickerInput
           value={toDatePickerValue(draft)}
           popoverAlign="end"
