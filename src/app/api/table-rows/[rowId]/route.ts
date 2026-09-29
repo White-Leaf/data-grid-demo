@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/database";
 import { TableRowModel } from "@/models/table.model";
+import { TABLE_COLUMN_CONFIG } from "@/app/main/table-config";
 
-const writableFields = [
-	"name", "email", "age", "salary", "department", "city", "status", "joinDate",
-] as const;
+const writableFields = TABLE_COLUMN_CONFIG
+	.filter((column) => column.editable)
+	.map((column) => String(column.id));
 
 export async function PATCH(
 	request: Request,
@@ -15,7 +16,7 @@ export async function PATCH(
 		const { rowId } = await params;
 		const body = (await request.json()) as Record<string, unknown>;
 		const updates = Object.fromEntries(
-			Object.entries(body).filter(([key]) => writableFields.includes(key as (typeof writableFields)[number])),
+			Object.entries(body).filter(([key]) => writableFields.includes(key)),
 		);
 
 		if (!Object.keys(updates).length) {

@@ -102,12 +102,6 @@ export interface DataGridColumnMeta<TData> {
   expandedContent?: (row: TData) => ReactNode;
   autoSize?: boolean;
   cellEdit?: DataGridColumnCellEdit<TData>;
-  editable?: boolean;
-  editorType?: "text" | "number" | "select" | "date";
-  editorOptions?: readonly string[];
-  parseValue?: (raw: string) => unknown;
-  formatValue?: (value: unknown) => string;
-  validate?: (value: unknown) => string | null;
   /**
    * Under `columnsResizable`, this column absorbs the free space the filler
    * strip would otherwise hold, so the grid always reads full-width and the
@@ -187,8 +181,7 @@ export const dataGridFeatures = tableFeatures({
     text: sortFn_text,
     textCaseSensitive: sortFn_textCaseSensitive,
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  columnMeta: metaHelper<DataGridColumnMeta<any>>(),
+  columnMeta: metaHelper<DataGridColumnMeta<object>>(),
 });
 
 /** The feature set `dataGridFeatures` registers. */
@@ -830,8 +823,7 @@ export interface DataGridProps<TFeatures extends TableFeatures, TData extends ob
 }
 
 const DataGridContext = createContext<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  DataGridContextProps<any> | undefined
+  DataGridContextProps<never> | undefined
 >(undefined);
 
 /**
@@ -841,10 +833,11 @@ const DataGridContext = createContext<
  * unifies with a concrete row type the way it did on v8.
  */
 function useDataGrid<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TData extends object = any,
+  TData extends object = object,
 >(): DataGridContextProps<TData> {
-  const context = useContext(DataGridContext) as DataGridContextProps<TData> | undefined;
+  const context = useContext(DataGridContext) as unknown as
+    | DataGridContextProps<TData>
+    | undefined;
   if (!context) {
     throw new Error("useDataGrid must be used within a DataGridProvider");
   }
@@ -867,9 +860,11 @@ function DataGridProvider<TData extends object>({
   // otherwise publish a new context value on every consumer render - at
   // mousemove rate during a resize drag, piercing the body-rows memo).
   const propsRef = useRef(props);
+  // eslint-disable-next-line react-hooks/refs -- Keep memoized context getters current without republishing context.
   propsRef.current = props;
   const i18n = mergeDataGridI18n(props.i18n);
   const i18nRef = useRef(i18n);
+  // eslint-disable-next-line react-hooks/refs -- Keep memoized context getters current without republishing context.
   i18nRef.current = i18n;
 
   // Same treatment for the table itself, which v9 - unlike v8 - re-creates on
@@ -877,6 +872,7 @@ function DataGridProvider<TData extends object>({
   // on each resize tick, which is exactly what the memo below exists to
   // prevent; the getter still hands every consumer the current instance.
   const tableRef = useRef(table);
+  // eslint-disable-next-line react-hooks/refs -- The autosize controller needs the latest table wrapper without being recreated.
   tableRef.current = table;
 
   // Re-assert an explicit tableLayout resize mode so consumer-level useTable
@@ -927,11 +923,15 @@ function DataGridProvider<TData extends object>({
   // wrapper is re-created on every state change, and re-creating the
   // controller with it would reset its applied-once bookkeeping mid-drag.
   const autoSize = useMemo(
+    // eslint-disable-next-line react-hooks/refs -- This getter is invoked by the controller after render, not while constructing it.
     () => createDataGridAutoSizeController(() => tableRef.current),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- The controller follows the stable table store, not each wrapper.
     [table.store],
   );
 
   const tableState = table.state;
+  const tableLayoutKey = JSON.stringify(props.tableLayout);
+  const tableClassNamesKey = JSON.stringify(props.tableClassNames);
 
   // Memoize context value so consumers don't re-render during column resize.
   // Column sizing state is intentionally excluded from deps -- CSS variables
@@ -965,10 +965,8 @@ function DataGridProvider<TData extends object>({
       props.isLoading,
       props.loadingMode,
       props.className,
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      JSON.stringify(props.tableLayout),
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      JSON.stringify(props.tableClassNames),
+      tableLayoutKey,
+      tableClassNamesKey,
       tableState.sorting,
       tableState.pagination,
       tableState.columnFilters,
@@ -984,10 +982,10 @@ function DataGridProvider<TData extends object>({
 
   return (
     // One React context serves every TData, but v9 declares both TFeatures and
-    // TData invariant, so a `DataGridContextProps<any>` context cannot accept a
+    // TData invariant, so a `DataGridContextProps<never>` context cannot accept a
     // `DataGridContextProps<TData>` value structurally. The erasure happens
     // here and is undone by the TData generic on each consumer component.
-    <DataGridContext.Provider value={value as unknown as DataGridContextProps<TData>}>
+    <DataGridContext.Provider value={value as unknown as DataGridContextProps<never>}>
       {children}
     </DataGridContext.Provider>
   );

@@ -3,14 +3,14 @@
 import { createPortal } from "react-dom";
 import { useState } from "react";
 import { Search } from "lucide-react";
-import { DatePickerInput } from "@/component/ui/date-picker";
+import { DatePickerInput } from "@/components/ui/date-picker";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/component/ui/select";
+} from "@/components/ui/select";
 import {
   DATE_OPERATORS,
   DATE_OPERATOR_LABELS,
@@ -41,13 +41,10 @@ export interface DataGridFilterMenuProps {
   onClear: () => void;
 }
 
-function validDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  return !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
-}
-
 function toDate(value: string) {
-  return validDate(value) ? new Date(`${value}T00:00:00`) : undefined;
+  return validateDateFilter("on", value).valid
+    ? new Date(`${value}T00:00:00`)
+    : undefined;
 }
 
 function fromDate(value: Date | undefined) {

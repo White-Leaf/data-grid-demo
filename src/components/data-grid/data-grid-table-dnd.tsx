@@ -206,7 +206,7 @@ function DataGridTableDnd<TData extends object>({
   handleDragEnd: (event: DragEndEvent) => void;
   footerContent?: ReactNode;
 }) {
-  const { table, props } = useDataGrid();
+  const { table, props } = useDataGrid<TData>();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDraggingColumn, setIsDraggingColumn] = useState(false);
 

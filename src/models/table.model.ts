@@ -1,4 +1,5 @@
 import mongoose, { Schema, Model } from "mongoose";
+import { STATUS_VALUES } from "@/app/main/table-config";
 import type { TableRow } from "@/types/table-types";
 
 const tableRowSchema = new Schema<TableRow>(
@@ -34,7 +35,7 @@ const tableRowSchema = new Schema<TableRow>(
     },
     status: {
       type: String,
-      enum: ["Active", "On Leave", "Inactive", "Pending"],
+      enum: STATUS_VALUES,
       required: true,
     },
     joinDate: {
