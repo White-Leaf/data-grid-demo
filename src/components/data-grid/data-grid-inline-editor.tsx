@@ -110,7 +110,7 @@ function ErrorMessage({
   }
 
   return (
-    <div className="px-2 text-[10px] font-medium text-red-600">
+    <div className="px-2 text-[10px] font-medium text-destructive">
       {message}
     </div>
   );
@@ -305,24 +305,24 @@ export function InlineCellEditor<TValue = string>({
     void commitValue();
   };
 
-  const handlePopupBlur = () => {
-    queueMicrotask(() => {
-      if (disabled || isPopupOpenRef.current) {
-        return;
-      }
+const handlePopupBlur = () => {
+  setTimeout(() => {
+    if (disabled || isPopupOpenRef.current) {
+      return;
+    }
 
-      const activeElement = document.activeElement;
+    const activeElement = document.activeElement;
 
-      if (
-        activeElement instanceof HTMLElement &&
-        editorRef.current?.contains(activeElement)
-      ) {
-        return;
-      }
+    if (
+      activeElement instanceof HTMLElement &&
+      editorRef.current?.contains(activeElement)
+    ) {
+      return;
+    }
 
-      void commitValue();
-    });
-  };
+    void commitValue();
+  }, 0);
+};
 
   const handlePopupOpenChange = (open: boolean) => {
     isPopupOpenRef.current = open;
@@ -333,7 +333,7 @@ export function InlineCellEditor<TValue = string>({
   };
 
   const sharedInputClasses = cn(
-    "box-border h-auto w-full min-w-0 border-0 bg-transparent px-2 text-sm text-slate-900 outline-none shadow-none ring-0 focus:border-0 focus:outline-none focus:ring-0",
+    "box-border h-auto w-full min-w-0 border-0 bg-transparent px-2 text-sm text-foreground outline-none shadow-none ring-0 focus:border-0 focus:outline-none focus:ring-0",
     className,
   );
 
@@ -407,7 +407,7 @@ export function InlineCellEditor<TValue = string>({
           clearable={false}
           triggerOnKeyDown={handleKeyDown}
           triggerClassName="h-full min-h-7 w-full rounded-none border-0 px-2 text-sm shadow-none"
-          className="h-full w-full"
+          className="w-full"
         />
 
         <ErrorMessage message={error} />

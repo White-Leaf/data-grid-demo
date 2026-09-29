@@ -95,7 +95,7 @@ export const TABLE_COLUMN_CONFIG: readonly TableColumnConfig[] = [
     filterType: "number",
     editable: true,
     editorType: "number",
-    displayValue: (value: unknown) => Number(value).toLocaleString(),
+    displayValue: (value: unknown) => String(value ?? ""),
   },
   {
     id: "department",

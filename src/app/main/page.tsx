@@ -152,30 +152,30 @@ export default function MainTable() {
   const activeFilterCount = activeFilters.length;
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 sm:p-8">
+    <main className="min-h-screen bg-background p-4 sm:p-8">
       <div className="mx-auto max-w-[1500px] space-y-3">
         <div
           ref={setTableContainer}
-          className="relative overflow-visible rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/5"
+          className="relative overflow-visible rounded-xl border border-border bg-card shadow-xl shadow-foreground/5"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
             <div>
-              <h1 className="text-base font-semibold text-slate-900">
+              <h1 className="text-base font-semibold text-foreground">
                 Employee directory
               </h1>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 Use the filter icon to narrow rows. Click a cell to edit.
               </p>
             </div>
 
             <div className="flex items-center gap-2">
               {error && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-medium text-red-700">
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[11px] font-medium text-destructive">
                   {error}
                 </div>
               )}
 
-              <div className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600">
+              <div className="rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground">
                 {activeFilterCount} active filter
                 {activeFilterCount === 1 ? "" : "s"}
               </div>
@@ -184,7 +184,7 @@ export default function MainTable() {
                 type="button"
                 disabled={activeFilterCount === 0 || isLoading}
                 onClick={clearFilters}
-                className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/30 hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Clear filters
               </button>
@@ -192,13 +192,13 @@ export default function MainTable() {
           </div>
 
           {activeFilterCount > 0 && (
-            <div className="flex flex-wrap gap-2 border-b border-slate-200 px-4 py-2.5 sm:px-5">
+            <div className="flex flex-wrap gap-2 border-b border-border px-4 py-2.5 sm:px-5">
               {activeFilters.map(
                 ([columnId, filter]) =>
                   filter && (
                     <div
                       key={columnId}
-                      className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 pl-2.5 text-xs font-medium text-blue-800"
+                      className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 pl-2.5 text-xs font-medium text-primary"
                     >
                       <span>
                         {filterLabel(getColumnLabel(columnId), filter)}
@@ -208,7 +208,7 @@ export default function MainTable() {
                         type="button"
                         onClick={() => applyFilter(columnId, null)}
                         aria-label={`Remove ${columnId} filter`}
-                        className="rounded-r-md p-1.5 text-blue-600 hover:bg-blue-100"
+                        className="rounded-r-md p-1.5 text-primary hover:bg-primary/15"
                       >
                         <X className="size-3.5" />
                       </button>
@@ -230,7 +230,7 @@ export default function MainTable() {
               headerSticky: true,
             }}
           >
-            <DataGridContainer className="border-0 bg-white">
+            <DataGridContainer className="border-0 bg-card">
               <DataGridScrollArea className="w-full overflow-hidden">
                 <DataGridTable />
               </DataGridScrollArea>

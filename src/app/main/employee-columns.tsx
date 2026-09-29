@@ -66,7 +66,7 @@ export function buildEmployeeColumns({
               type="button"
               aria-label={`Filter ${columnConfig.label}`}
               title={`Filter ${columnConfig.label}`}
-              className="group flex w-full items-center justify-between gap-2 text-left text-[11px] font-bold lowercase tracking-wide text-slate-700"
+              className="group flex w-full items-center justify-between gap-2 text-left text-[11px] font-bold lowercase tracking-wide text-foreground"
               onClick={(event) => {
                 const buttonRect = event.currentTarget.getBoundingClientRect();
                 const tableContainer = portalContainer;
@@ -105,8 +105,8 @@ export function buildEmployeeColumns({
                 className={cn(
                   "size-3.5 transition",
                   isOpen
-                    ? "text-blue-600"
-                    : "text-slate-400 group-hover:text-blue-500",
+                    ? "text-primary"
+                    : "text-muted-foreground group-hover:text-primary",
                 )}
               />
             </button>

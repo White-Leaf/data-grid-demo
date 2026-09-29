@@ -1009,14 +1009,13 @@
 .rdp-input_icon {
   position: absolute;
   z-index: 2;
-  inset-block-start: 50%;
+  inset-block-start: calc(50% + 7px);
   inset-inline-start: 0.75rem;
   width: 1rem;
   height: 1rem;
   transform: translateY(-50%);
   pointer-events: none;
   color: var(--rdp-muted-color);
-  top: 23px;
 }
 
 .rdp-input_trigger {
@@ -1032,7 +1031,6 @@
   background: transparent;
   cursor: pointer;
   bottom: 0;
-
 }
 
 .rdp-input_control:has(.rdp-input_trigger:focus-visible) .rdp-input_surface {
