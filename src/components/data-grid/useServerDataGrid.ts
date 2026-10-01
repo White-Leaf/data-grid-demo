@@ -20,6 +20,11 @@ import {
   type EditableDataGridCellSaveParams,
   type EditableDataGridColumn,
 } from "./useEditableDataGrid";
+import {
+  createDataGridRowActionColumn,
+  useDataGridRowOrdering,
+  type DataGridRowActionConfig,
+} from "../row-action/useDataGridRowActions";
 
 export interface DataGridFetchParams {
   pageIndex: number;
@@ -54,6 +59,7 @@ export interface UseServerDataGridOptions<
   columnContext: TColumnContext;
   editorColumns: EditableDataGridColumn<TData>[];
   getRowId: (row: TData) => string;
+  rowActions?: DataGridRowActionConfig<TData>;
   fetchData: (
     params: DataGridFetchParams,
   ) => Promise<DataGridFetchResult<TData>>;
@@ -78,6 +84,7 @@ export function useServerDataGrid<
   columnContext,
   editorColumns,
   getRowId,
+  rowActions,
   fetchData,
   saveCell,
   initialPageSize = 50,
@@ -93,6 +100,14 @@ export function useServerDataGrid<
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+
+  const refresh = useCallback(() => {
+    setIsLoading(true);
+    setRefreshVersion((current) => current + 1);
+  }, []);
+
+  const configuredPinnedRowIds = rowActions?.pinnedRowIds; // extract the id of currently pinned rows
 
   const reportError = useCallback(
     (cause: unknown) => {
@@ -198,7 +213,7 @@ export function useServerDataGrid<
       active = false;
       controller.abort();
     };
-  }, [fetchData, filters, pagination.pageIndex, pagination.pageSize, reportError, sorting]);
+  }, [fetchData, filters, pagination.pageIndex, pagination.pageSize, refreshVersion, reportError, sorting]);
 
   const editableGrid = useEditableDataGrid({
     data: rows,
@@ -209,16 +224,97 @@ export function useServerDataGrid<
     onError: reportError,
   });
 
-  const tableColumns = useMemo(
-    () =>
-      columns({
-        ...columnContext,
-        editableGrid,
-        filters,
-        applyFilter,
+  const rowOrdering = useDataGridRowOrdering({ // the actual row ordering logic is handled in the useDataGridRowOrdering hook
+    rows,
+    getRowId: rowActions?.getRowId ?? getRowId,
+    enabled:
+      sorting.length === 0 &&
+      rowActions?.orderingEnabled !== false &&
+      !isLoading,
+    onReorder: (nextRows, move) => {
+      const pinnedIds = new Set(   // extract the id of currently pinned rows
+        Array.from(rowActions?.pinnedRowIds ?? [], String),
+      );
+      const getActionRowId = rowActions?.getRowId ?? getRowId;
+      let reachedUnpinnedRows = false;
+
+      for (const row of nextRows) {
+        const isPinned = pinnedIds.has(String(getActionRowId(row)));
+
+        if (isPinned && reachedUnpinnedRows) {
+          return;
+        }
+
+        if (!isPinned) {  // if we reach an unpinned row, we set the flag to true
+          reachedUnpinnedRows = true;
+        }
+      }
+
+      setRows(nextRows);  // update the rows state with the new order
+      if (!rowActions?.onReorder) {
+        return;
+      }
+
+      void Promise.resolve()
+        .then(() => rowActions.onReorder?.(nextRows, move))
+        .then(() => setError(null))
+        .catch((cause: unknown) => {
+          reportError(cause);
+          refresh();
+        });
+    },
+  });
+
+ const handleRowPinChange = useCallback(  // Connects the reusable row-action component to the supplied callback and handles loading/error/refresh
+  (rowId: string, pinned: boolean) => {
+    try {
+      const result = rowActions?.onPinChange?.(rowId, pinned);
+
+      if (result && typeof result.then === "function") {
+        setIsLoading(true);
+        void result
+          .then(() => {
+            setError(null);
+            refresh();
+          })
+          .catch((cause: unknown) => {
+            reportError(cause);
+            refresh();
+          });
+      }
+    } catch (cause) {
+      reportError(cause);
+      refresh();
+    }
+  },
+  [refresh, reportError, rowActions],
+);
+
+  const tableColumns = useMemo(() => {
+    const resolvedColumns = columns({
+      ...columnContext,
+      editableGrid,
+      filters,
+      applyFilter,
+    });
+
+    if (!rowActions?.enabled) {
+      return resolvedColumns;
+    }
+
+    return [
+      createDataGridRowActionColumn<TData>({
+        getRowId: rowActions.getRowId ?? getRowId,
+        orderingEnabled:
+          sorting.length === 0 &&
+          rowActions.orderingEnabled !== false &&
+          !isLoading,
+        pinnedRowIds: rowActions.pinnedRowIds,
+        onPinChange: handleRowPinChange,
       }),
-    [applyFilter, columnContext, columns, editableGrid, filters],
-  );
+      ...resolvedColumns,
+    ];
+  }, [applyFilter, columnContext, columns, editableGrid, filters, getRowId, handleRowPinChange, isLoading, rowActions, sorting.length]);
 
   const table = useDataGridTable({
     columns: tableColumns,
@@ -232,6 +328,10 @@ export function useServerDataGrid<
       columnFilters,
       sorting,
       pagination,
+      rowPinning: {  //passing pinning state to tanstack table, so that it can handle pinned rows correctly
+        top: Array.from(configuredPinnedRowIds ?? [], String),
+        bottom: [],
+      },
     },
     onSortingChange: handleSortingChange,
     onPaginationChange: handlePaginationChange,
@@ -239,6 +339,7 @@ export function useServerDataGrid<
 
   return {
     rows,
+    setRows,
     recordCount,
     filters,
     applyFilter,
@@ -249,5 +350,7 @@ export function useServerDataGrid<
     error,
     table,
     editableGrid,
+    rowOrdering,
+    refresh,
   };
 }

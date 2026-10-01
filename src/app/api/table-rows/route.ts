@@ -4,6 +4,9 @@ import { TableRowModel } from "@/models/table.model";
 import { createMongoFilterQuery } from "@/sections/common-filters";
 import type { ColumnFilterState } from "@/types/filter-types";
 import { TABLE_COLUMN_CONFIG } from "@/app/main/table-config";
+import { DataGridRowStateModel } from "@/models/data-grid-row-state.model";
+import { EMPLOYEE_DIRECTORY_TABLE_KEY } from "@/lib/data-grid-table-registry";
+import { registerNewDataGridRow } from "@/lib/data-grid-row-state";
 
 const filterableFields = TABLE_COLUMN_CONFIG
   .filter((column) => column.filterType)
@@ -47,14 +50,91 @@ export async function GET(request: Request) {
       }
     }
 
-    const [rows, total] = await Promise.all([
-      TableRowModel.find(query)
-        .sort(Object.keys(sort).length ? sort : { id: 1 })
-        .skip(pageIndex * pageSize)
-        .limit(pageSize)
-        .lean(),
-      TableRowModel.countDocuments(query),
-    ]);
+    const hasExplicitSorting = Object.keys(sort).length > 0;
+    const orderBy: Record<string, 1 | -1> = {
+      __gridPinPriority: 1,
+      ...(hasExplicitSorting ? sort : { __gridOrderRank: 1 }),
+      ...(sort.id === undefined ? { id: 1 } : {}),
+    };
+
+    const [result] = await TableRowModel.aggregate([
+      { $match: query },
+      {
+        $lookup: {
+          from: DataGridRowStateModel.collection.name,
+          let: { rowId: "$id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tableKey", EMPLOYEE_DIRECTORY_TABLE_KEY] },
+                    { $eq: ["$rowId", "$$rowId"] },
+                  ],
+                },
+              },
+            },
+            { $project: { _id: 0, orderRank: 1, pinPosition: 1 } },
+          ],
+          as: "__gridState",
+        },
+      },
+      {
+        $addFields: {
+          __gridOrderRank: {
+            $ifNull: [
+              { $arrayElemAt: ["$__gridState.orderRank", 0] },
+              Number.MAX_SAFE_INTEGER,
+            ],
+          },
+          __gridPinPriority: {
+            $switch: {
+              branches: [
+                {
+                  case: {
+                    $eq: [
+                      { $arrayElemAt: ["$__gridState.pinPosition", 0] },
+                      "top",
+                    ],
+                  },
+                  then: 0,
+                },
+                {
+                  case: {
+                    $eq: [
+                      { $arrayElemAt: ["$__gridState.pinPosition", 0] },
+                      "bottom",
+                    ],
+                  },
+                  then: 2,
+                },
+              ],
+              default: 1,
+            },
+          },
+        },
+      },
+      { $sort: orderBy },
+      {
+        $facet: {
+          data: [
+            { $skip: pageIndex * pageSize },
+            { $limit: pageSize },
+            {
+              $project: {
+                __gridState: 0,
+                __gridOrderRank: 0,
+                __gridPinPriority: 0,
+              },
+            },
+          ],
+          count: [{ $count: "total" }],
+        },
+      },
+    ]).allowDiskUse(true);
+
+    const rows = result?.data ?? [];
+    const total = result?.count[0]?.total ?? 0;
 
     return NextResponse.json({
       data: rows,
@@ -77,6 +157,7 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     const row = await TableRowModel.create(body);
+    await registerNewDataGridRow(EMPLOYEE_DIRECTORY_TABLE_KEY, row.id);
 
     return NextResponse.json(
       {
