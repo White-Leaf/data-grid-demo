@@ -17,12 +17,13 @@ import {
 } from "@/components/data-grid/data-grid";
 import type { DataGridFeatures, DataGridTableInstance } from "@/components/data-grid/data-grid";
 import { flexRender, Subscribe } from "@tanstack/react-table";
-import type { Cell, Column, Header, Row, Table } from "@tanstack/react-table";
+import type { Cell, Column, Header, Row, } from "@tanstack/react-table";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
+import { DataGridRowPinButton } from "@/components/row-action/data-grid-row-pin-button";
 import { PlusIcon } from "lucide-react";
 
 // Static spacing lookups; called once per cell, so they stay plain string
@@ -658,19 +659,19 @@ function DataGridTableBase({ children }: { children: ReactNode }) {
     props.tableLayout?.columnsResizable,
     // Visibility/order/pinning change the flat header set, so a column shown
     // after mount must get its size variable even though sizing is untouched.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     table.state.columnSizing,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     table.state.columnVisibility,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     table.state.columnOrder,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     table.state.columnPinning,
     // A def swap can change a column's `size` without touching sizing
     // STATE; without this dep the CSS variables keep the old widths. For a
     // consumer defining columns inline the memo degrades to per-render
     // recompute, which is the safe direction.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     table.options.columns,
   ]);
 
@@ -866,7 +867,7 @@ function DataGridTableHead({ children }: { children: ReactNode }) {
   );
 }
 
-function DataGridTableHeadRow({ children, rowId }: { children: ReactNode; rowId: string }) {
+function DataGridTableHeadRow({ children, }: { children: ReactNode; rowId: string }) {
   const { props } = useDataGrid();
 
   return (
@@ -1262,10 +1263,77 @@ function DataGridTableRowSpacer() {
 }
 
 function DataGridTableBody({ children }: { children: ReactNode }) {
-  const { props } = useDataGrid();
+  const { props, table } = useDataGrid();
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body || !props.tableLayout?.rowsPinnable) return;
+
+    const tableElement = body.closest("table");
+    const header = tableElement?.querySelector<HTMLElement>("thead") ?? null;
+
+    const updatePinnedRowOffsets = () => {
+      const rowElements = new Map(
+        Array.from(body.querySelectorAll<HTMLTableRowElement>("tr[data-row-id]")).map(
+          (row) => [row.dataset.rowId, row] as const,
+        ),
+      );
+      rowElements.forEach((row) => {
+        row.style.removeProperty("top");
+        row.style.removeProperty("bottom");
+      });
+      const topRows = table
+        .getTopRows()
+        .flatMap((row) => (rowElements.has(row.id) ? [rowElements.get(row.id)!] : []));
+      const bottomRows = table
+        .getBottomRows()
+        .flatMap((row) => (rowElements.has(row.id) ? [rowElements.get(row.id)!] : []));
+      let topOffset = props.tableLayout?.headerSticky
+        ? (header?.getBoundingClientRect().height ?? 0)
+        : 0;
+      let bottomOffset = 0;
+
+      for (const row of topRows) {
+        row.style.top = `${topOffset}px`;
+        topOffset += row.getBoundingClientRect().height;
+      }
+
+      for (const row of [...bottomRows].reverse()) {
+        row.style.bottom = `${bottomOffset}px`;
+        bottomOffset += row.getBoundingClientRect().height;
+      }
+    };
+
+    updatePinnedRowOffsets();
+
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(updatePinnedRowOffsets);
+    if (header) observer.observe(header);
+    body
+      .querySelectorAll<HTMLTableRowElement>("tr[data-row-pinned]")
+      .forEach((row) => observer.observe(row));
+
+    return () => {
+      observer.disconnect();
+      body
+        .querySelectorAll<HTMLTableRowElement>("tr[data-row-id]")
+        .forEach((row) => {
+          row.style.removeProperty("top");
+          row.style.removeProperty("bottom");
+        });
+    };
+  }, [
+    children,
+    props.tableLayout?.headerSticky,
+    props.tableLayout?.rowsPinnable,
+    table,
+  ]);
 
   return (
     <tbody
+      ref={bodyRef}
       data-slot="data-grid-table-body"
       className={cn(
         props.tableLayout?.rowRounded && "[&_td:first-child]:rounded-l-lg",
@@ -1344,7 +1412,7 @@ function DataGridTableFootRowCell({
 }
 
 function DataGridTableBodyRowSkeleton({ children }: { children: ReactNode }) {
-  const { table, props } = useDataGrid();
+  const {  props } = useDataGrid();
 
   return (
     <tr
@@ -1440,12 +1508,21 @@ function DataGridTableBodyRow<TData extends object>({
         assignRef(rowRef, node);
         assignRef(dndRef, node);
       }}
-      style={{ ...(dndStyle ? dndStyle : null) }}
+      style={{
+        ...(dndStyle ? dndStyle : null),
+        ...(props.tableLayout?.rowsPinnable &&
+          isRowPinned && {
+            position: "sticky",
+            zIndex: 20,
+            background: "var(--background)",
+          }),
+      }}
       data-state={table.options.enableRowSelection && row.getIsSelected() ? "selected" : undefined}
       data-index={dataIndex}
       data-row-id={row.id}
       data-depth={row.depth || undefined}
       data-row-pinned={isRowPinned || undefined}
+      data-row-pin-position={isRowPinned || undefined}
       data-row-pinned-boundary={pinnedBoundary}
       data-row-status={rowStatus}
       // 1-based after the header row; row.index is the position in the data,
@@ -1911,57 +1988,16 @@ function DataGridTableLoader() {
   );
 }
 
-function DataGridTableRowPin<TData extends object>({ row }: { row: Row<DataGridFeatures, TData> }) {
-  const { i18n } = useDataGrid();
-  const isPinned = row.getIsPinned();
-
+function DataGridTableRowPin<TData extends object>({
+  row,
+}: {
+  row: Row<DataGridFeatures, TData>;
+}) {
   return (
-    <button
-      type="button"
-      aria-label={isPinned ? i18n.labels.unpinRow : i18n.labels.pinRow}
-      onClick={(event) => {
-        // Pinning must not bubble into the row's onRowClick handler.
-        event.stopPropagation();
-
-        if (isPinned) {
-          row.pin(false);
-        } else {
-          row.pin("top");
-        }
-      }}
-      className={cn(
-        "text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-full transition-colors",
-        isPinned && "text-primary hover:text-primary/80",
-      )}
-    >
-      {isPinned ? (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          stroke="none"
-        >
-          <path d="M16 2l4.585 4.586-2.122 2.121L17.05 7.293l-3.535 3.536 1.413 5.658-2.12 2.121-4.244-4.243L4.322 18.6l-1.414-1.41 4.242-4.244-4.243-4.243 2.122-2.121 5.656 1.414 3.536-3.536-1.414-1.414z" />
-        </svg>
-      ) : (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="12" y1="17" x2="12" y2="22" />
-          <path d="M5 17h14v-1.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V6h1a2 2 0 000-4H8a2 2 0 000 4h1v4.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24z" />
-        </svg>
-      )}
-    </button>
+    <DataGridRowPinButton
+      pinPosition={row.getIsPinned() || null}
+      onPinChange={(pinPosition) => row.pin(pinPosition ?? false)}
+    />
   );
 }
 

@@ -16,6 +16,7 @@ import type {
   EditableDataGridCellSaveParams,
 } from "@/components/data-grid";
 import type { DataGridRowMove } from "@/components/row-action/useDataGridRowActions";
+import type { DataGridPinPosition } from "@/models/data-grid-row-state.model";
 
 import {
   DATE_OPERATOR_LABELS,
@@ -58,7 +59,13 @@ export default function MainTable() {
   const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(
     null,
   );
-  const [pinnedRowIds, setPinnedRowIds] = useState<string[]>([]);
+  const [pinnedRows, setPinnedRows] = useState<
+    Array<{ rowId: string; pinPosition: DataGridPinPosition }>
+  >([]);
+  const pinnedRowPositions = useMemo(
+    () => new Map(pinnedRows.map(({ rowId, pinPosition }) => [rowId, pinPosition])),
+    [pinnedRows],
+  );
   const [pinStateLoaded, setPinStateLoaded] = useState(false);
   const [rowStateError, setRowStateError] = useState<string | null>(null);
   const pinQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -138,7 +145,7 @@ export default function MainTable() {
     [],
   );
 
-  const fetchPinnedRowIds = useCallback(async (signal?: AbortSignal) => {
+  const fetchPinnedRows = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch(
       `/api/data-grid-state?tableKey=${EMPLOYEE_DIRECTORY_TABLE_KEY}`,
       { signal },
@@ -149,23 +156,21 @@ export default function MainTable() {
     }
 
     const payload = (await response.json()) as {
-      data: Array<{ rowId: string; pinPosition: "top" | "bottom" }>;
+      data: Array<{ rowId: string; pinPosition: DataGridPinPosition }>;
     };
     if (!Array.isArray(payload.data)) {
       throw new Error("Invalid saved row pin response.");
     }
-    return payload.data
-      .filter((row) => row.pinPosition === "top")
-      .map((row) => row.rowId);
+    return payload.data;
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     const revision = pinRevisionRef.current;
-    void fetchPinnedRowIds(controller.signal)
-      .then((savedIds) => {
+    void fetchPinnedRows(controller.signal)
+      .then((savedRows) => {
         if (revision === pinRevisionRef.current) {
-          setPinnedRowIds(savedIds);
+          setPinnedRows(savedRows);
           setPinStateLoaded(true);
         }
       })
@@ -180,17 +185,14 @@ export default function MainTable() {
       });
 
     return () => controller.abort();
-  }, [fetchPinnedRowIds]);
+  }, [fetchPinnedRows]);
 
   const handleRowPinChange = useCallback( // Performs and persists the actual pin/unpin operation
-    (rowId: string, pinned: boolean) => {
-      setPinnedRowIds((current) =>
-        pinned
-          ? current.includes(rowId)
-            ? current
-            : [...current, rowId]
-          : current.filter((id) => id !== rowId),
-      );
+    (rowId: string, pinPosition: DataGridPinPosition | null) => {
+      setPinnedRows((current) => {
+        const withoutRow = current.filter((row) => row.rowId !== rowId);
+        return pinPosition ? [...withoutRow, { rowId, pinPosition }] : withoutRow;
+      });
 
       const revision = ++pinRevisionRef.current;
       const request = pinQueueRef.current.then(async () => {
@@ -200,7 +202,7 @@ export default function MainTable() {
           body: JSON.stringify({
             tableKey: EMPLOYEE_DIRECTORY_TABLE_KEY,
             rowId,
-            pinPosition: pinned ? "top" : null,
+            pinPosition,
           }),
         });
 
@@ -215,7 +217,7 @@ export default function MainTable() {
         .catch(async (cause: unknown) => {
           if (revision === pinRevisionRef.current) {
             try {
-              setPinnedRowIds(await fetchPinnedRowIds());
+              setPinnedRows(await fetchPinnedRows());
             } catch {
               setRowStateError("Unable to restore saved row pin state.");
             }
@@ -223,7 +225,7 @@ export default function MainTable() {
           throw cause;
         });
     },
-    [fetchPinnedRowIds],
+    [fetchPinnedRows],
   );
 
   const handleRowReorder = useCallback(
@@ -268,7 +270,7 @@ export default function MainTable() {
       enabled: true,
       orderingEnabled: pinStateLoaded,
       getRowId: getEmployeeRowId,
-      pinnedRowIds,
+      pinnedRowPositions,
       onReorder: handleRowReorder,
       onPinChange: handleRowPinChange,
     },
@@ -362,7 +364,7 @@ export default function MainTable() {
             }}
           >
             <DataGridContainer className="border-0 bg-card">
-              <DataGridScrollArea className="w-full overflow-hidden">
+              <DataGridScrollArea className="max-h-[calc(100vh-180px)] w-full overflow-auto">
                 <DataGridTableDndRows
                 dataIds={rowOrdering.dataIds}
                 handleDragEnd={rowOrdering.handleDragEnd}

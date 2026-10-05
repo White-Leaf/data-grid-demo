@@ -25,6 +25,7 @@ import {
   useDataGridRowOrdering,
   type DataGridRowActionConfig,
 } from "../row-action/useDataGridRowActions";
+import type { DataGridPinPosition } from "@/models/data-grid-row-state.model";
 
 export interface DataGridFetchParams {
   pageIndex: number;
@@ -107,7 +108,19 @@ export function useServerDataGrid<
     setRefreshVersion((current) => current + 1);
   }, []);
 
-  const configuredPinnedRowIds = rowActions?.pinnedRowIds; // extract the id of currently pinned rows
+  const configuredPinnedRowPositions = rowActions?.pinnedRowPositions;
+  const rowPinning = useMemo(() => {
+    const pinnedRows: Record<DataGridPinPosition, string[]> = {
+      top: [],
+      bottom: [],
+    };
+
+    configuredPinnedRowPositions?.forEach((position, rowId) => {
+      pinnedRows[position].push(rowId);
+    });
+
+    return pinnedRows;
+  }, [configuredPinnedRowPositions]);
 
   const reportError = useCallback(
     (cause: unknown) => {
@@ -232,22 +245,25 @@ export function useServerDataGrid<
       rowActions?.orderingEnabled !== false &&
       !isLoading,
     onReorder: (nextRows, move) => {
-      const pinnedIds = new Set(   // extract the id of currently pinned rows
-        Array.from(rowActions?.pinnedRowIds ?? [], String),
-      );
+      let previousSection = 0;
       const getActionRowId = rowActions?.getRowId ?? getRowId;
-      let reachedUnpinnedRows = false;
+      const sectionOrder: Record<DataGridPinPosition, number> = {
+        top: 0,
+        bottom: 2,
+      };
 
       for (const row of nextRows) {
-        const isPinned = pinnedIds.has(String(getActionRowId(row)));
+        const pinPosition = configuredPinnedRowPositions?.get(
+          String(getActionRowId(row)),
+        );
+        const section =
+          pinPosition === undefined ? 1 : sectionOrder[pinPosition];
 
-        if (isPinned && reachedUnpinnedRows) {
+        if (section < previousSection) {
           return;
         }
 
-        if (!isPinned) {  // if we reach an unpinned row, we set the flag to true
-          reachedUnpinnedRows = true;
-        }
+        previousSection = section;
       }
 
       setRows(nextRows);  // update the rows state with the new order
@@ -265,30 +281,30 @@ export function useServerDataGrid<
     },
   });
 
- const handleRowPinChange = useCallback(  // Connects the reusable row-action component to the supplied callback and handles loading/error/refresh
-  (rowId: string, pinned: boolean) => {
-    try {
-      const result = rowActions?.onPinChange?.(rowId, pinned);
+  const handleRowPinChange = useCallback(
+    (rowId: string, pinPosition: DataGridPinPosition | null) => {
+      try {
+        const result = rowActions?.onPinChange?.(rowId, pinPosition);
 
-      if (result && typeof result.then === "function") {
-        setIsLoading(true);
-        void result
-          .then(() => {
-            setError(null);
-            refresh();
-          })
-          .catch((cause: unknown) => {
-            reportError(cause);
-            refresh();
-          });
+        if (result && typeof result.then === "function") {
+          setIsLoading(true);
+          void result
+            .then(() => {
+              setError(null);
+              refresh();
+            })
+            .catch((cause: unknown) => {
+              reportError(cause);
+              refresh();
+            });
+        }
+      } catch (cause) {
+        reportError(cause);
+        refresh();
       }
-    } catch (cause) {
-      reportError(cause);
-      refresh();
-    }
-  },
-  [refresh, reportError, rowActions],
-);
+    },
+    [refresh, reportError, rowActions],
+  );
 
   const tableColumns = useMemo(() => {
     const resolvedColumns = columns({
@@ -309,7 +325,7 @@ export function useServerDataGrid<
           sorting.length === 0 &&
           rowActions.orderingEnabled !== false &&
           !isLoading,
-        pinnedRowIds: rowActions.pinnedRowIds,
+        pinnedRowPositions: rowActions.pinnedRowPositions,
         onPinChange: handleRowPinChange,
       }),
       ...resolvedColumns,
@@ -329,8 +345,7 @@ export function useServerDataGrid<
       sorting,
       pagination,
       rowPinning: {  //passing pinning state to tanstack table, so that it can handle pinned rows correctly
-        top: Array.from(configuredPinnedRowIds ?? [], String),
-        bottom: [],
+        ...rowPinning,
       },
     },
     onSortingChange: handleSortingChange,
