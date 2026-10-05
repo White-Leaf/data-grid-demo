@@ -8,7 +8,7 @@ import {
   validatePinPosition,
   validateRowId,
   validateTableKey,
-} from "@/lib/data-grid-row-state";
+} from "@/service/data-grid-row-service";
 
 function isSameOriginMutation(request: Request) {
   const origin = request.headers.get("origin");

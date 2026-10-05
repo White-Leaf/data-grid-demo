@@ -5,8 +5,8 @@ import { createMongoFilterQuery } from "@/sections/common-filters";
 import type { ColumnFilterState } from "@/types/filter-types";
 import { TABLE_COLUMN_CONFIG } from "@/app/main/table-config";
 import { DataGridRowStateModel } from "@/models/data-grid-row-state.model";
-import { EMPLOYEE_DIRECTORY_TABLE_KEY } from "@/lib/data-grid-table-registry";
-import { registerNewDataGridRow } from "@/lib/data-grid-row-state";
+import { EMPLOYEE_DIRECTORY_TABLE_KEY } from "@/registry/data-grid-table-registry";
+import { registerNewDataGridRow } from "@/service/data-grid-row-service";
 
 const filterableFields = TABLE_COLUMN_CONFIG
   .filter((column) => column.filterType)

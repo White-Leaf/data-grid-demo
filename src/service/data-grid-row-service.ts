@@ -5,7 +5,7 @@ import type { AnyBulkWriteOperation } from "mongoose"; // this type is used for 
 import {
   getDataGridTableAdapter,
   type DataGridTableAdapter,
-} from "@/lib/data-grid-table-registry";
+} from "@/registry/data-grid-table-registry";
 import type { DataGridPinPosition } from "@/models/data-grid-row-state.model";
 
 const ORDER_GAP = 1024;

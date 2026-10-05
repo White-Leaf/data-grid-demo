@@ -147,7 +147,7 @@ export default function MainTable() {
 
   const fetchPinnedRows = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch(
-      `/api/data-grid-state?tableKey=${EMPLOYEE_DIRECTORY_TABLE_KEY}`,
+      `/api/data-grid-state/rows?tableKey=${EMPLOYEE_DIRECTORY_TABLE_KEY}`,
       { signal },
     );
 
@@ -196,7 +196,7 @@ export default function MainTable() {
 
       const revision = ++pinRevisionRef.current;
       const request = pinQueueRef.current.then(async () => {
-        const response = await fetch("/api/data-grid-state", {
+        const response = await fetch("/api/data-grid-state/rows", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -231,7 +231,7 @@ export default function MainTable() {
   const handleRowReorder = useCallback(
     (_nextRows: TableRow[], move: DataGridRowMove) => {
       const request = reorderQueueRef.current.then(async () => {
-        const response = await fetch("/api/data-grid-state", {
+        const response = await fetch("/api/data-grid-state/rows", {
           method: "POST",
           keepalive: true,
           headers: { "Content-Type": "application/json" },
@@ -364,7 +364,15 @@ export default function MainTable() {
             }}
           >
             <DataGridContainer className="border-0 bg-card">
-              <DataGridScrollArea className="max-h-[calc(100vh-180px)] w-full overflow-auto">
+         <DataGridScrollArea
+  className="
+    max-h-[calc(100vh-150px)]
+    w-full
+    overflow-hidden
+    [&>[data-slot=scroll-area-viewport]]:h-auto
+    [&>[data-slot=scroll-area-viewport]]:max-h-[calc(100vh-150px)]
+  "
+>
                 <DataGridTableDndRows
                 dataIds={rowOrdering.dataIds}
                 handleDragEnd={rowOrdering.handleDragEnd}
