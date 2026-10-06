@@ -404,3 +404,34 @@ tableLayout={{
 </DataGrid>
 )
 }
+
+## Persisting column order and pinning
+
+`useDataGridColumnState` applies loaded column order and pin positions to the
+table, and delegates loading and persistence to the callbacks you provide. This
+keeps the grid behavior independent of a particular API or storage layer:
+
+```tsx
+const columnIds = useMemo(() => columns.map((column) => column.id), [columns])
+const { isLoaded, error } = useDataGridColumnState({
+  table,
+  columnIds,
+  loadState: (signal) => loadSavedColumnState(signal),
+  onReorder: (move) => saveColumnMove(move),
+  onPinChange: (columnId, pinPosition) =>
+    saveColumnPin(columnId, pinPosition),
+})
+
+<DataGrid
+  table={table}
+  tableLayout={{
+    columnsMovable: isLoaded,
+    columnsPinnable: isLoaded,
+  }}
+/>
+```
+
+`loadSavedColumnState`, `saveColumnMove`, and `saveColumnPin` are supplied by
+the consuming application. With the included column-state API, include the
+registered `tableKey` in those requests. `columnIds` must identify the columns
+managed by that store; other columns retain their position.

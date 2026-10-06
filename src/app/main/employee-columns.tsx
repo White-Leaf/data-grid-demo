@@ -1,5 +1,9 @@
 import { Filter } from "lucide-react";
-import { DataGridFilterMenu, InlineCellEditor } from "@/components/data-grid";
+import {
+  DataGridColumnHeader,
+  DataGridFilterMenu,
+  InlineCellEditor,
+} from "@/components/data-grid";
 import type {
   DataGridColumnDef,
   ServerDataGridColumnContext,
@@ -53,20 +57,36 @@ export function buildEmployeeColumns({
             },
           }
         : {}),
-      header: () => {
+      header: ({ column }) => {
         if (!columnConfig.filterable || !type) {
-          return columnConfig.label;
+          return (
+            <DataGridColumnHeader
+              column={column}
+              title={columnConfig.label}
+              className="text-[11px] font-bold lowercase tracking-wide"
+            />
+          );
         }
 
         const isOpen = openColumn === columnId;
 
         return (
-          <div className="relative -m-2 min-h-9 overflow-visible px-2 py-2">
+          <div className="relative -m-2 flex min-h-9 items-center justify-between gap-1 overflow-visible px-2 py-2">
+            <DataGridColumnHeader
+              column={column}
+              title={columnConfig.label}
+              className="text-[11px] font-bold lowercase tracking-wide"
+            />
             <button
               type="button"
               aria-label={`Filter ${columnConfig.label}`}
               title={`Filter ${columnConfig.label}`}
-              className="group flex w-full items-center justify-between gap-2 text-left text-[11px] font-bold lowercase tracking-wide text-foreground"
+              className={cn(
+                "group inline-flex size-7 shrink-0 items-center justify-center rounded-full transition",
+                isOpen
+                  ? "bg-secondary text-primary"
+                  : "text-muted-foreground hover:bg-secondary hover:text-primary",
+              )}
               onClick={(event) => {
                 const buttonRect = event.currentTarget.getBoundingClientRect();
                 const tableContainer = portalContainer;
@@ -100,7 +120,6 @@ export function buildEmployeeColumns({
                 setOpenColumn(isOpen ? null : columnId);
               }}
             >
-              {columnConfig.label}
               <Filter
                 className={cn(
                   "size-3.5 transition",

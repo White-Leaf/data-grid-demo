@@ -135,6 +135,7 @@ export function createDataGridRowActionColumn<TData extends object>({
     size: 96,
     enableSorting: false,
     enableColumnFilter: false,
+    enableColumnOrdering: false,
     header: "",
     cell: ({ row }) => {
       const rowId = String(getRowId(row.original));

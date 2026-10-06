@@ -85,8 +85,28 @@ function DataGridColumnHeaderInner<TData extends object, TValue>({
   const canResize = column.getCanResize();
 
   const columnIndex = columnOrder.indexOf(column.id);
-  const canMoveLeft = columnIndex > 0;
-  const canMoveRight = columnIndex < columnOrder.length - 1;
+  const canMoveColumn =
+    (column.columnDef as { enableColumnOrdering?: boolean })
+      .enableColumnOrdering !== false;
+  const isInColumnOrder = columnIndex >= 0;
+  const canMoveLeft =
+    canMoveColumn &&
+    isInColumnOrder &&
+    columnIndex > 0 &&
+    (table
+      .getAllLeafColumns()
+      .find((leafColumn) => leafColumn.id === columnOrder[columnIndex - 1])
+      ?.columnDef as { enableColumnOrdering?: boolean } | undefined)
+      ?.enableColumnOrdering !== false;
+  const canMoveRight =
+    canMoveColumn &&
+    isInColumnOrder &&
+    columnIndex < columnOrder.length - 1 &&
+    (table
+      .getAllLeafColumns()
+      .find((leafColumn) => leafColumn.id === columnOrder[columnIndex + 1])
+      ?.columnDef as { enableColumnOrdering?: boolean } | undefined)
+      ?.enableColumnOrdering !== false;
 
   const handleSort = () => {
     if (isSorted === "asc") {
@@ -216,7 +236,7 @@ function DataGridColumnHeaderInner<TData extends object, TValue>({
         <DropdownMenuItem
           key="move-left"
           onClick={() => {
-            if (columnIndex > 0) {
+            if (canMoveLeft) {
               const newOrder = [...columnOrder];
               const [movedColumn] = newOrder.splice(columnIndex, 1);
               newOrder.splice(columnIndex - 1, 0, movedColumn);
@@ -231,7 +251,7 @@ function DataGridColumnHeaderInner<TData extends object, TValue>({
         <DropdownMenuItem
           key="move-right"
           onClick={() => {
-            if (columnIndex < columnOrder.length - 1) {
+            if (canMoveRight) {
               const newOrder = [...columnOrder];
               const [movedColumn] = newOrder.splice(columnIndex, 1);
               newOrder.splice(columnIndex + 1, 0, movedColumn);

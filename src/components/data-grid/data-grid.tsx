@@ -1097,7 +1097,10 @@ export type DataGridColumnDef<TData extends object, TValue = unknown> = ColumnDe
   DataGridFeatures,
   TData,
   TValue
->;
+> & {
+  /** Excludes this column from menu and drag-based column reordering. */
+  enableColumnOrdering?: boolean;
+};
 
 /**
  * `useTable` pre-bound to `dataGridFeatures`. Every grid in the app should
