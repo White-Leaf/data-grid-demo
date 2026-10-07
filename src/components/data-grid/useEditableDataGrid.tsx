@@ -117,9 +117,7 @@ export function useEditableDataGrid<TData extends object>({
 }: UseEditableDataGridOptions<TData>) {
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
 
-  const [pendingCells, setPendingCells] = useState<
-    Record<string, boolean>
-  >({});
+  const [pendingCells, setPendingCells] = useState<Record<string, boolean>>({});
 
   const editorMap = useMemo(
     () => new Map(editorColumns.map((column) => [column.id, column])),
@@ -234,15 +232,7 @@ export function useEditableDataGrid<TData extends object>({
         setPendingCells((pending) => ({ ...pending, [cellKey]: false }));
       }
     },
-    [
-      data,
-      editorMap,
-      getRowId,
-      onError,
-      onSaveCell,
-      pendingCells,
-      setData,
-    ],
+    [data, editorMap, getRowId, onError, onSaveCell, pendingCells, setData],
   );
 
   const getNextEditableCell = useCallback(
@@ -250,8 +240,18 @@ export function useEditableDataGrid<TData extends object>({
       rowId: string,
       columnId: string,
       direction: InlineCellEditorNavigation,
+      orderedColumnIds?: readonly string[],
     ) => {
-      const columnIndex = editorColumns.findIndex(
+      const navigationColumns = orderedColumnIds
+        ? editorColumns
+            .filter((column) => orderedColumnIds.includes(column.id))
+            .sort(
+              (left, right) =>
+                orderedColumnIds.indexOf(left.id) -
+                orderedColumnIds.indexOf(right.id),
+            )
+        : editorColumns;
+      const columnIndex = navigationColumns.findIndex(
         (column) => column.id === columnId,
       );
 
@@ -264,8 +264,8 @@ export function useEditableDataGrid<TData extends object>({
       const nextColumnIndex =
         direction === "next" ? columnIndex + 1 : columnIndex - 1;
 
-      if (nextColumnIndex >= 0 && nextColumnIndex < editorColumns.length) {
-        return { rowId, columnId: editorColumns[nextColumnIndex].id };
+      if (nextColumnIndex >= 0 && nextColumnIndex < navigationColumns.length) {
+        return { rowId, columnId: navigationColumns[nextColumnIndex].id };
       }
 
       const nextRowIndex = direction === "next" ? rowIndex + 1 : rowIndex - 1;
@@ -280,8 +280,8 @@ export function useEditableDataGrid<TData extends object>({
         rowId: getRowId(nextRow),
         columnId:
           direction === "next"
-            ? editorColumns[0].id
-            : editorColumns[editorColumns.length - 1].id,
+            ? navigationColumns[0].id
+            : navigationColumns[navigationColumns.length - 1].id,
       };
     },
     [data, editorColumns, getRowId],

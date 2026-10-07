@@ -3,6 +3,7 @@ import {
   DataGridColumnHeader,
   DataGridFilterMenu,
   InlineCellEditor,
+  useDataGrid,
 } from "@/components/data-grid";
 import type {
   DataGridColumnDef,
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 import type { ColumnFilterState } from "@/types/filter-types";
 import type { TableRow } from "@/types/table-types";
 import { TABLE_COLUMN_CONFIG } from "./table-config";
+import type { TableColumnConfig } from "./table-config";
 
 export type EmployeeColumnPresentationContext = {
   openColumn: string | null;
@@ -21,8 +23,101 @@ export type EmployeeColumnPresentationContext = {
   setMenuPosition: (position: { top: number; left: number }) => void;
 };
 
-export type EmployeeColumnContext =
-  ServerDataGridColumnContext<TableRow> & EmployeeColumnPresentationContext;
+export type EmployeeColumnContext = ServerDataGridColumnContext<TableRow> &
+  EmployeeColumnPresentationContext;
+
+function EditableEmployeeCell({
+  row,
+  columnConfig,
+  value,
+  editableGrid,
+}: {
+  row: TableRow;
+  columnConfig: TableColumnConfig;
+  value: unknown;
+  editableGrid: EmployeeColumnContext["editableGrid"];
+}) {
+  const { table } = useDataGrid<TableRow>();
+  const columnId = columnConfig.id;
+  const displayValue = columnConfig.displayValue
+    ? columnConfig.displayValue(value)
+    : String(value ?? "");
+  const isEditing = editableGrid.isCellEditing(row.id, columnId);
+
+  if (!isEditing) {
+    return (
+      <button
+        type="button"
+        className="flex h-8 min-h-8 w-full items-center px-2 text-left text-sm leading-5 outline-none focus:outline-none focus-visible:bg-transparent focus-visible:ring-0"
+        onMouseDown={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
+
+          event.preventDefault();
+          editableGrid.startCellEdit(row.id, columnId);
+        }}
+      >
+        {displayValue}
+      </button>
+    );
+  }
+
+  const config = editableGrid.getEditorConfig(columnId);
+  if (!config) return null;
+
+  const orderedColumnIds = [
+    ...table.getStartVisibleLeafColumns(),
+    ...table.getCenterVisibleLeafColumns(),
+    ...table.getEndVisibleLeafColumns(),
+  ].map((column) => column.id);
+
+  return (
+    <div className="absolute inset-0 z-10 box-border flex w-full items-center overflow-visible">
+      <div className="pointer-events-none absolute inset-0 z-20 border-2 border-blue-500" />
+      <InlineCellEditor
+        key={`${row.id}-${columnId}`}
+        value={value}
+        initialDraft={editableGrid.activeCell?.initialDraft}
+        disabled={editableGrid.isCellPending(row.id, columnId)}
+        editorType={config.editorType}
+        options={config.options}
+        parseValue={
+          config.parseValue ? (raw) => config.parseValue?.(raw, row) : undefined
+        }
+        formatValue={
+          config.formatValue
+            ? (nextValue) =>
+                config.formatValue?.(nextValue, row) ?? String(nextValue ?? "")
+            : undefined
+        }
+        validate={
+          config.validate
+            ? (nextValue) => config.validate?.(nextValue, row) ?? null
+            : undefined
+        }
+        onCommit={(nextValue) =>
+          editableGrid.commitCellEdit(row, columnId, nextValue)
+        }
+        onCancel={() => editableGrid.cancelCellEdit(row.id, columnId)}
+        onNavigate={(direction) => {
+          const nextCell = editableGrid.getNextEditableCell(
+            row.id,
+            columnId,
+            direction,
+            orderedColumnIds,
+          );
+
+          if (nextCell) {
+            editableGrid.startCellEdit(nextCell.rowId, nextCell.columnId);
+          } else {
+            editableGrid.cancelCellEdit(row.id, columnId);
+          }
+        }}
+      />
+    </div>
+  );
+}
 
 export function buildEmployeeColumns({
   editableGrid,
@@ -150,99 +245,14 @@ export function buildEmployeeColumns({
         );
       },
       cell: columnConfig.editable
-        ? ({ row, getValue }) => {
-            const value = getValue();
-            const isEditing = editableGrid.isCellEditing(
-              row.original.id,
-              columnId,
-            );
-
-            if (isEditing) {
-              const config = editableGrid.getEditorConfig(columnId);
-
-              if (!config) {
-                return null;
-              }
-
-              return (
-                <div className="absolute inset-0 z-10 box-border flex w-full items-center overflow-visible">
-                  <div className="pointer-events-none absolute inset-0 z-20 border-2 border-blue-500" />
-                  <InlineCellEditor
-                    key={`${row.original.id}-${columnId}`}
-                    value={value}
-                    initialDraft={editableGrid.activeCell?.initialDraft}
-                    disabled={editableGrid.isCellPending(
-                      row.original.id,
-                      columnId,
-                    )}
-                    editorType={config.editorType}
-                    options={config.options}
-                    parseValue={
-                      config.parseValue
-                        ? (raw) => config.parseValue?.(raw, row.original)
-                        : undefined
-                    }
-                    formatValue={
-                      config.formatValue
-                        ? (nextValue) =>
-                            config.formatValue?.(nextValue, row.original) ??
-                            String(nextValue ?? "")
-                        : undefined
-                    }
-                    validate={
-                      config.validate
-                        ? (nextValue) =>
-                            config.validate?.(nextValue, row.original) ?? null
-                        : undefined
-                    }
-                    onCommit={(nextValue) =>
-                      editableGrid.commitCellEdit(
-                        row.original,
-                        columnId,
-                        nextValue,
-                      )
-                    }
-                    onCancel={() =>
-                      editableGrid.cancelCellEdit(row.original.id, columnId)
-                    }
-                    onNavigate={(direction) => {
-                      const nextCell = editableGrid.getNextEditableCell(
-                        row.original.id,
-                        columnId,
-                        direction,
-                      );
-
-                      if (nextCell) {
-                        editableGrid.startCellEdit(
-                          nextCell.rowId,
-                          nextCell.columnId,
-                        );
-                      } else {
-                        editableGrid.cancelCellEdit(row.original.id, columnId);
-                      }
-                    }}
-                  />
-                </div>
-              );
-            }
-
-            return (
-              <button
-                type="button"
-                className="flex h-8 min-h-8 w-full items-center px-2 text-left text-sm leading-5 outline-none focus:outline-none focus-visible:bg-transparent focus-visible:ring-0"
-                onMouseDown={(event) => {
-                  if (event.button !== 0) {
-                    return;
-                  }
-
-                  event.preventDefault();
-                  editableGrid.startCellEdit(row.original.id, columnId);
-                }}
-              >
-                {displayValue(value)}
-              </button>
-            );
-          }
+        ? ({ row, getValue }) => (
+            <EditableEmployeeCell
+              row={row.original}
+              columnConfig={columnConfig}
+              value={getValue()}
+              editableGrid={editableGrid}
+            />
+          )
         : ({ getValue }) => displayValue(getValue()),
     };
   });

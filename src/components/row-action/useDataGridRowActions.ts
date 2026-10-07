@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { DataGridColumnDef } from "../data-grid/data-grid";
+import { useDataGrid } from "../data-grid/data-grid";
 import { DataGridTableDndRowHandle } from "../data-grid/data-grid-table-dnd-rows";
 import { DataGridRowPinButton } from "./data-grid-row-pin-button";
 import type { DataGridPinPosition } from "@/models/data-grid-row-state.model";
@@ -46,6 +47,39 @@ export interface DataGridRowActionConfig<TData extends object> {
     pinPosition: DataGridPinPosition | null,
   ) => void | Promise<void>;
 }
+
+function DataGridRowActionCell({
+  rowId,
+  pinPosition,
+  orderingEnabled,
+  onPinChange,
+}: {
+  rowId: string;
+  pinPosition: DataGridPinPosition | null;
+  orderingEnabled: boolean;
+  onPinChange?: (
+    rowId: string,
+    pinPosition: DataGridPinPosition | null,
+  ) => void | Promise<void>;
+}) {
+  const { props } = useDataGrid();
+
+  return React.createElement(
+    "div",
+    { className: "flex items-center gap-1" },
+    React.createElement(DataGridTableDndRowHandle, {
+      disabled: !orderingEnabled,
+    }),
+    props.tableLayout?.rowsPinnable
+      ? React.createElement(DataGridRowPinButton, {
+          pinPosition,
+          onPinChange: (nextPinPosition: DataGridPinPosition | null) =>
+            onPinChange?.(rowId, nextPinPosition),
+        })
+      : null,
+  );
+}
+
 // handle the drag and reorder
 export function useDataGridRowOrdering<TData extends object>({
   rows,
@@ -142,17 +176,12 @@ export function createDataGridRowActionColumn<TData extends object>({
       const pinPosition =
         pinnedRowPositions?.get(rowId) ?? (row.getIsPinned() || null);
 
-      return React.createElement(
-        "div",
-        { className: "flex items-center gap-1" },
-        React.createElement(DataGridTableDndRowHandle, {
-          disabled: !orderingEnabled,
-        }),
-        React.createElement(DataGridRowPinButton, {
-          pinPosition,
-          onPinChange: (nextPinPosition) => onPinChange?.(rowId, nextPinPosition),
-        }),
-      );
+      return React.createElement(DataGridRowActionCell, {
+        rowId,
+        pinPosition,
+        orderingEnabled,
+        onPinChange,
+      });
     },
     meta: {
       cellClassName: "relative !p-0",

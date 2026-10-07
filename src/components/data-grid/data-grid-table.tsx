@@ -1993,6 +1993,9 @@ function DataGridTableRowPin<TData extends object>({
 }: {
   row: Row<DataGridFeatures, TData>;
 }) {
+  const { props } = useDataGrid<TData>();
+  if (!props.tableLayout?.rowsPinnable) return null;
+
   return (
     <DataGridRowPinButton
       pinPosition={row.getIsPinned() || null}

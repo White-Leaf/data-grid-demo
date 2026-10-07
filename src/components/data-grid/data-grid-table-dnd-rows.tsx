@@ -118,11 +118,12 @@ function DataGridTableDndRowHandle({
   /** Announced and shown on hover in place of the drag affordance. */
   disabledLabel?: string;
 }) {
-  const { i18n } = useDataGrid();
+  const { i18n, props } = useDataGrid();
   const context = useContext(SortableRowContext);
   const resolvedDisabledLabel = disabledLabel ?? i18n.labels.reorderingUnavailable;
+  const isDisabled = disabled || !props.tableLayout?.rowsDraggable;
 
-  if (!context || disabled) {
+  if (!context || isDisabled) {
     return (
       <Button
         variant="ghost"
@@ -132,11 +133,11 @@ function DataGridTableDndRowHandle({
           // The Button's own disabled treatment supplies the muting; only the
           // cursor needs saying, so the grip reads as unavailable rather than
           // merely unresponsive.
-          disabled && "cursor-not-allowed",
+          isDisabled && "cursor-not-allowed",
           className,
         )}
-        aria-label={disabled ? resolvedDisabledLabel : i18n.labels.dragToReorderRow}
-        title={disabled ? resolvedDisabledLabel : undefined}
+        aria-label={isDisabled ? resolvedDisabledLabel : i18n.labels.dragToReorderRow}
+        title={isDisabled ? resolvedDisabledLabel : undefined}
         disabled
       >
         <GripHorizontalIcon aria-hidden="true" />
@@ -186,6 +187,7 @@ function DataGridTableDndRow<TData extends object>({
   renderRowDecoration?: DataGridTableDndRowDecoration<TData>;
   dropIndicator?: boolean;
 }) {
+  const { props } = useDataGrid<TData>();
   const rowData: DataGridTableDndRowData = {
     type: "data-grid-row",
     depth: row.depth,
@@ -206,6 +208,7 @@ function DataGridTableDndRow<TData extends object>({
   } = useSortable({
     id: row.id,
     data: rowData,
+    disabled: !props.tableLayout?.rowsDraggable,
   });
 
   // Which edge of THIS row the carried row would land on, or null when it is
