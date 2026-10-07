@@ -235,6 +235,9 @@ export function buildEmployeeColumns({
                   applyFilter(columnId, filter);
                   setOpenColumn(null);
                 }}
+                onCancel={() => {
+                  setOpenColumn(null);
+                }}
                 onClear={() => {
                   applyFilter(columnId, null);
                   setOpenColumn(null);

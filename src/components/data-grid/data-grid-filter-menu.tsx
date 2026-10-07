@@ -38,7 +38,8 @@ export interface DataGridFilterMenuProps {
   position: { top: number; left: number };
   portalContainer: HTMLDivElement | null;
   onApply: (filter: ColumnFilterState) => void;
-  onClear: () => void;
+  onCancel: () => void;
+  onClear?: () => void;
 }
 
 function toDate(value: string) {
@@ -89,7 +90,8 @@ export function DataGridFilterMenu({
   position,
   portalContainer,
   onApply,
-  onClear,
+  onCancel,
+  // onClear,
 }: DataGridFilterMenuProps) {
   const initial: ColumnFilterState =
     value ??
@@ -162,19 +164,21 @@ export function DataGridFilterMenu({
             labelFor={(operator) => TEXT_OPERATOR_LABELS[operator]}
             onChange={(operator) => updateDraft({ ...text, operator })}
           />
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-2 size-3.5 text-muted-foreground" />
-            <input
-              autoFocus
-              disabled={text.operator === "blank" || text.operator === "notBlank"}
-              value={text.value}
-              onChange={(event) =>
-                updateDraft({ ...text, value: event.target.value })
-              }
-              placeholder="Search..."
-              className="h-8 w-full rounded-md border border-input bg-background pl-7 pr-2 text-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/30 disabled:bg-muted"
-            />
-          </div>
+          {text.operator !== "blank" && text.operator !== "notBlank" && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2 top-2 size-3.5 text-muted-foreground" />
+
+              <input
+                autoFocus
+                value={text.value}
+                onChange={(event) =>
+                  updateDraft({ ...text, value: event.target.value })
+                }
+                placeholder="Search..."
+                className="h-8 w-full rounded-md border border-input bg-background pl-7 pr-2 text-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+              />
+            </div>
+          )}
         </>
       )}
 
@@ -238,13 +242,22 @@ export function DataGridFilterMenu({
       )}
 
       <div className="mt-3 flex gap-2">
-        <button
+        {/* <button
           type="button"
           onClick={onClear}
           className="h-8 flex-1 rounded-md border border-input text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         >
           Clear
+        </button> */}
+
+        <button
+          type="button"
+          onClick={onCancel}
+          className="h-8 flex-1 rounded-md border border-input text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        >
+          Cancel
         </button>
+
         <button
           type="button"
           onClick={apply}
