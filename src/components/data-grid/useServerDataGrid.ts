@@ -237,8 +237,36 @@ export function useServerDataGrid<
     onError: reportError,
   });
 
+  const displayRows = useMemo(() => {
+    if (!configuredPinnedRowPositions?.size) {
+      return rows;
+    }
+
+    return rows
+      .map((row, index) => ({
+        row,
+        index,
+        pinPosition: configuredPinnedRowPositions.get(
+          String(getRowId(row)),
+        ),
+      }))
+      .sort((left, right) => {
+        const getPriority = (position: DataGridPinPosition | undefined) => {
+          if (position === "top") return 0;
+          if (position === "bottom") return 2;
+          return 1;
+        };
+
+        return (
+          getPriority(left.pinPosition) - getPriority(right.pinPosition) ||
+          left.index - right.index
+        );
+      })
+      .map(({ row }) => row);
+  }, [configuredPinnedRowPositions, getRowId, rows]);
+
   const rowOrdering = useDataGridRowOrdering({ // the actual row ordering logic is handled in the useDataGridRowOrdering hook
-    rows,
+    rows: displayRows,
     getRowId: rowActions?.getRowId ?? getRowId,
     enabled:
       sorting.length === 0 &&
@@ -287,23 +315,19 @@ export function useServerDataGrid<
         const result = rowActions?.onPinChange?.(rowId, pinPosition);
 
         if (result && typeof result.then === "function") {
-          setIsLoading(true);
           void result
             .then(() => {
               setError(null);
-              refresh();
             })
             .catch((cause: unknown) => {
               reportError(cause);
-              refresh();
             });
         }
       } catch (cause) {
         reportError(cause);
-        refresh();
       }
     },
-    [refresh, reportError, rowActions],
+    [reportError, rowActions],
   );
 
   const tableColumns = useMemo(() => {
@@ -334,7 +358,7 @@ export function useServerDataGrid<
 
   const table = useDataGridTable({
     columns: tableColumns,
-    data: rows,
+    data: displayRows,
     getRowId,
     pageCount: Math.ceil(recordCount / pagination.pageSize),
     manualFiltering: true,

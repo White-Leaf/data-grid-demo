@@ -27,5 +27,6 @@ export function validateTextFilter(
     return invalidResult("Please enter a text value.");
   }
 
+
   return validResult();
 }
