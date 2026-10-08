@@ -21,11 +21,7 @@ import type {
 import type { DataGridRowMove } from "@/components/row-action/useDataGridRowActions";
 import type { DataGridPinPosition } from "@/models/data-grid-row-state.model";
 
-import {
-  DATE_OPERATOR_LABELS,
-  TEXT_OPERATOR_LABELS,
-} from "@/sections/common-filters";
-import type { ColumnFilterState } from "@/types/filter-types";
+import { formatFilterLabel } from "@/sections/common-filters";
 import type { TableRow } from "@/types/table-types";
 import { EMPLOYEE_DIRECTORY_TABLE_KEY } from "@/lib/data-grid-constants";
 
@@ -60,24 +56,6 @@ async function ensureColumnStateResponse(
       : fallback;
 
   throw new Error(message);
-}
-
-function filterLabel(columnLabel: string, filter: ColumnFilterState) {
-  if (filter.type === "text") {
-    return `${columnLabel} ${TEXT_OPERATOR_LABELS[
-      filter.operator
-    ].toLowerCase()}${filter.value ? `: ${filter.value}` : ""}`;
-  }
-
-  if (filter.type === "number") {
-    return `${columnLabel} ${filter.operator} ${filter.value}`;
-  }
-
-  return filter.operator === "between"
-    ? `${columnLabel}: ${filter.value} - ${filter.secondValue}`
-    : `${columnLabel} ${DATE_OPERATOR_LABELS[
-        filter.operator
-      ].toLowerCase()} ${filter.value}`;
 }
 
 export default function MainTable() {
@@ -499,7 +477,7 @@ export default function MainTable() {
                       className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 pl-2.5 text-xs font-medium text-primary"
                     >
                       <span>
-                        {filterLabel(getColumnLabel(columnId), filter)}
+                        {formatFilterLabel(getColumnLabel(columnId), filter)}
                       </span>
 
                       <button

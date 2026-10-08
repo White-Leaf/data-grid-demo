@@ -9,7 +9,9 @@ function escapeRegex(value: string) {
 export function createMongoFilter(filter: ColumnFilterState): unknown {
   if (filter.type === "number") {
     const value = Number(filter.value);
-    if (!Number.isFinite(value)) return {};
+    if (!Number.isFinite(value)) {
+      throw new Error("Numeric filter value must be a finite number.");
+    }
 
     const operators = { "=": "$eq", ">": "$gt", "<": "$lt", ">=": "$gte", "<=": "$lte" } as const;
     return { [operators[filter.operator]]: value };
@@ -19,18 +21,32 @@ export function createMongoFilter(filter: ColumnFilterState): unknown {
     if (filter.operator === "on") return filter.value;
     if (filter.operator === "before") return { $lt: filter.value };
     if (filter.operator === "after") return { $gt: filter.value };
-    return { $gte: filter.value, $lte: filter.secondValue ?? filter.value };
+    if (filter.operator === "between") {
+      if (!filter.secondValue) {
+        throw new Error("Date range filter requires a second date.");
+      }
+      return { $gte: filter.value, $lte: filter.secondValue };
+    }
+    throw new Error("Unsupported date filter operator.");
   }
 
+  if (filter.operator === "blank") return { $in: ["", null] };
+  if (filter.operator === "notBlank") return { $exists: true, $nin: ["", null] };
+
   const value = escapeRegex(filter.value.trim());
-  if (filter.operator === "blank") return "";
-  if (filter.operator === "notBlank") return { $ne: "" };
-  if (filter.operator === "equals") return { $regex: `^${value}$`, $options: "i" };
-  if (filter.operator === "notEquals") return { $not: { $regex: `^${value}$`, $options: "i" } };
-  if (filter.operator === "startsWith") return { $regex: `^${value}`, $options: "i" };
-  if (filter.operator === "endsWith") return { $regex: `${value}$`, $options: "i" };
-  if (filter.operator === "notContains") return { $not: { $regex: value, $options: "i" } };
-  return { $regex: value, $options: "i" };
+  const expressions = {
+    contains: value,
+    notContains: value,
+    equals: `^${value}$`,
+    notEquals: `^${value}$`,
+    startsWith: `^${value}`,
+    endsWith: `${value}$`,
+  };
+  const expression = expressions[filter.operator];
+  if (filter.operator === "notContains" || filter.operator === "notEquals") {
+    return { $not: { $regex: expression, $options: "i" } };
+  }
+  return { $regex: expression, $options: "i" };
 }
 
 export function createMongoFilterQuery(
