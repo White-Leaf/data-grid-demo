@@ -76,7 +76,6 @@ function getErrorMessage(error: unknown) {
     ? error.message
     : "Unable to complete the table request.";
 }
-
 export function useServerDataGrid<
   TData extends object,
   TColumnContext extends object,
@@ -88,7 +87,7 @@ export function useServerDataGrid<
   rowActions,
   fetchData,
   saveCell,
-  initialPageSize = 50,
+  initialPageSize = 10,
   onError,
 }: UseServerDataGridOptions<TData, TColumnContext>) {
   const [rows, setRows] = useState<TData[]>([]);

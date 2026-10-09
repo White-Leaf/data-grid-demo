@@ -413,7 +413,7 @@ export default function MainTable() {
     },
     fetchData,
     saveCell,
-    initialPageSize: 50,
+    initialPageSize: 10,
   });
 
   useDataGridColumnState({

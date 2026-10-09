@@ -50,11 +50,18 @@ export async function GET(request: Request) {
       }
     }
 
+
     const hasExplicitSorting = Object.keys(sort).length > 0;
-    const orderBy: Record<string, 1 | -1> = {
-      __gridPinPriority: 1,
+
+    const normalOrderBy: Record<string, 1 | -1> = {
       ...(hasExplicitSorting ? sort : { __gridOrderRank: 1 }),
       ...(sort.id === undefined ? { id: 1 } : {}),
+    };
+
+    // Pinned rows retain their saved order, independently of normal-row sorting.
+    const pinnedOrderBy: Record<string, 1 | -1> = {
+      __gridOrderRank: 1,
+      id: 1,
     };
 
     const [result] = await TableRowModel.aggregate([
@@ -114,10 +121,22 @@ export async function GET(request: Request) {
           },
         },
       },
-      { $sort: orderBy },
       {
         $facet: {
-          data: [
+          topPinned: [
+            { $match: { __gridPinPriority: 0 } },
+            { $sort: pinnedOrderBy },
+            {
+              $project: {
+                __gridState: 0,
+                __gridOrderRank: 0,
+                __gridPinPriority: 0,
+              },
+            },
+          ],
+          normal: [
+            { $match: { __gridPinPriority: 1 } },
+            { $sort: normalOrderBy },
             { $skip: pageIndex * pageSize },
             { $limit: pageSize },
             {
@@ -128,12 +147,31 @@ export async function GET(request: Request) {
               },
             },
           ],
-          count: [{ $count: "total" }],
+          bottomPinned: [
+            { $match: { __gridPinPriority: 2 } },
+            { $sort: pinnedOrderBy },
+            {
+              $project: {
+                __gridState: 0,
+                __gridOrderRank: 0,
+                __gridPinPriority: 0,
+              },
+            },
+          ],
+          count: [
+            { $match: { __gridPinPriority: 1 } },
+            { $count: "total" },
+          ],
         },
       },
     ]).allowDiskUse(true);
 
-    const rows = result?.data ?? [];
+    const rows = [
+      ...(result?.topPinned ?? []),
+      ...(result?.normal ?? []),
+      ...(result?.bottomPinned ?? []),
+    ];
+
     const total = result?.count[0]?.total ?? 0;
 
     return NextResponse.json({
