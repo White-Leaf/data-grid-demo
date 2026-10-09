@@ -166,7 +166,7 @@ export function buildEmployeeColumns({
         const isOpen = openColumn === columnId;
 
         return (
-          <div className="relative -m-2 flex min-h-9 items-center justify-between gap-1 overflow-visible px-2 py-2">
+          <div className="relative -m-2 flex min-h-9 items-center justify-between gap-0.3 overflow-visible px-2 py-2">
             <DataGridColumnHeader
               column={column}
               title={columnConfig.label}

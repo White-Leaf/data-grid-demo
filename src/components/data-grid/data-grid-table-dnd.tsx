@@ -275,6 +275,7 @@ function DataGridTableDnd<TData extends object>({
     >
       <DataGridTableViewport
         viewportRef={containerRef}
+        disableColumnDnd
         className={
           isDraggingColumn ? "relative cursor-grabbing [&_*]:cursor-grabbing!" : "relative"
         }

@@ -72,6 +72,31 @@ function makeOrderMoves(
   previousOrder: string[],
   nextOrder: string[],
 ): DataGridColumnMove[] {
+  if (
+    previousOrder.length === nextOrder.length &&
+    previousOrder.every((columnId) => nextOrder.includes(columnId))
+  ) {
+    for (let sourceIndex = 0; sourceIndex < previousOrder.length; sourceIndex += 1) {
+      const columnId = previousOrder[sourceIndex];
+      const targetIndex = nextOrder.indexOf(columnId);
+      if (targetIndex === sourceIndex) continue;
+
+      const candidateOrder = [...previousOrder];
+      candidateOrder.splice(sourceIndex, 1);
+      candidateOrder.splice(targetIndex, 0, columnId);
+
+      if (candidateOrder.every((id, index) => id === nextOrder[index])) {
+        return [
+          {
+            columnId,
+            previousColumnId: nextOrder[targetIndex - 1] ?? null,
+            nextColumnId: nextOrder[targetIndex + 1] ?? null,
+          },
+        ];
+      }
+    }
+  }
+
   const workingOrder = [...previousOrder];
   const moves: DataGridColumnMove[] = [];
 

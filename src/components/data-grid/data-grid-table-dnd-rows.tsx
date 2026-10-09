@@ -12,7 +12,7 @@ import {
   useState,
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { useDataGrid } from "@/components/data-grid/data-grid";
+import { getColumnHeaderLabel, useDataGrid } from "@/components/data-grid/data-grid";
 import type { DataGridFeatures, DataGridTableInstance } from "@/components/data-grid/data-grid";
 import {
   DataGridTableBase,
@@ -32,6 +32,8 @@ import {
   DataGridTableHeadRowCellResize,
   DataGridTableRowSpacer,
   DataGridTableViewport,
+  getDataGridColumnSortableId,
+  reorderDataGridColumn,
   shouldRenderDataGridTableRowSpacer,
 } from "@/components/data-grid/data-grid-table";
 import {
@@ -40,6 +42,7 @@ import {
   DragOverlay,
   KeyboardSensor,
   MouseSensor,
+  pointerWithin,
   TouchSensor,
   useSensor,
   useSensors,
@@ -52,22 +55,21 @@ import {
   type Modifier,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
+  horizontalListSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
   type SortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { flexRender } from "@tanstack/react-table";
-import type { Cell, HeaderGroup, Row, Table } from "@tanstack/react-table";
+import type { Cell, HeaderGroup, Row,  } from "@tanstack/react-table";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { GripHorizontalIcon } from "lucide-react";
+import { GripHorizontalIcon, GripVerticalIcon } from "lucide-react";
 
 // Context to share sortable listeners from row to handle
 type SortableContextValue = ReturnType<typeof useSortable>;
@@ -431,6 +433,7 @@ function DataGridTableDndRows<TData extends object>({
   const { table, props } = useDataGrid<TData>();
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingRow, setIsDraggingRow] = useState(false);
+  const [isDraggingColumn, setIsDraggingColumn] = useState(false);
   // The overlay is portalled to the document body. dnd-kit renders DragOverlay
   // in place, and it positions with `position: fixed` against viewport
   // coordinates - so any ancestor that establishes a containing block for fixed
@@ -456,6 +459,13 @@ function DataGridTableDndRows<TData extends object>({
     width: number;
     height: number;
     columns: number[];
+  } | null>(null);
+  const [carriedColumn, setCarriedColumn] = useState<{
+    id: string;
+    width: number;
+    headerHeight: number;
+    rowHeights: number[];
+    title: string;
   } | null>(null);
 
   const pickUpRow = useCallback((id: UniqueIdentifier) => {
@@ -508,7 +518,7 @@ function DataGridTableDndRows<TData extends object>({
   );
 
   useEffect(() => {
-    if (!isDraggingRow) return;
+    if (!isDraggingRow && !isDraggingColumn) return;
 
     const { body, documentElement } = document;
     const previousBodyCursor = body.style.cursor;
@@ -521,10 +531,10 @@ function DataGridTableDndRows<TData extends object>({
       body.style.cursor = previousBodyCursor;
       documentElement.style.cursor = previousDocumentCursor;
     };
-  }, [isDraggingRow]);
+  }, [isDraggingColumn, isDraggingRow]);
 
   const resolvedModifiers = useMemo(() => {
-    const restrictToTableContainer: Modifier = ({ transform, draggingNodeRect }) => {
+    const restrictToTableContainer: Modifier = ({ active, transform, draggingNodeRect }) => {
       if (!tableContainerRef.current || !draggingNodeRect) {
         return transform;
       }
@@ -536,53 +546,138 @@ function DataGridTableDndRows<TData extends object>({
       const maxX = containerRect.right - draggingNodeRect.right;
       const minY = containerRect.top - draggingNodeRect.top;
       const maxY = containerRect.bottom - draggingNodeRect.bottom;
+      const isDraggingColumn = active?.data.current?.type === "data-grid-column";
 
       return {
         ...transform,
-        // The horizontal rail only engages while the default axis restriction
-        // is in force. A row is exactly as wide as the viewport, so minX and
-        // maxX both collapse to 0 and clamping x erases it entirely: harmless
-        // under restrictToVerticalAxis, which zeroes x anyway, but fatal for a
-        // caller that replaced the restriction precisely to READ x, as a tree
-        // does to resolve drop depth. Vertical is railed either way, which is
-        // what actually keeps a dragged row inside the grid.
-        x: modifiers ? x : Math.max(minX, Math.min(maxX, x)),
-        y: Math.max(minY, Math.min(maxY, y)),
+        x: isDraggingColumn
+          ? Math.max(minX, Math.min(maxX, x))
+          : modifiers
+            ? x
+            : 0,
+        y: isDraggingColumn ? 0 : Math.max(minY, Math.min(maxY, y)),
       };
     };
 
-    // The container clamp is a safety rail rather than a policy, so it stays
-    // applied even when the caller replaces the axis restriction.
-    return [...(modifiers ?? [restrictToVerticalAxis]), restrictToTableContainer];
+    return [...(modifiers ?? []), restrictToTableContainer];
   }, [modifiers]);
+
+  const resolvedCollisionDetection = useCallback<CollisionDetection>(
+    (args) => {
+      const sortableType = args.active.data.current?.type;
+      const targetType =
+        sortableType === "data-grid-column"
+          ? "data-grid-column"
+          : "data-grid-row";
+      const sortableContainers = args.droppableContainers.filter(
+        (container) => container.data.current?.type === targetType,
+      );
+      const sortableArgs = { ...args, droppableContainers: sortableContainers };
+
+      if (sortableType === "data-grid-column") {
+        const pointerCollisions = pointerWithin(sortableArgs);
+        return pointerCollisions.length
+          ? pointerCollisions
+          : closestCenter(sortableArgs);
+      }
+
+      return collisionDetection(sortableArgs);
+    },
+    [collisionDetection],
+  );
 
   return (
     <DndContext
       id={useId()}
-      collisionDetection={collisionDetection}
+      collisionDetection={resolvedCollisionDetection}
       modifiers={resolvedModifiers}
       onDragCancel={(event) => {
         setIsDraggingRow(false);
+        setIsDraggingColumn(false);
         setCarried(null);
-        onDragCancel?.(event);
+        setCarriedColumn(null);
+        if (event.active.data.current?.type === "data-grid-row") {
+          onDragCancel?.(event);
+        }
       }}
       onDragEnd={(event) => {
         setIsDraggingRow(false);
+        setIsDraggingColumn(false);
         setCarried(null);
-        handleDragEnd(event);
+        setCarriedColumn(null);
+        if (event.active.data.current?.type === "data-grid-column") {
+          reorderDataGridColumn(
+            table,
+            event,
+            !!props.tableLayout?.columnsPinnable,
+          );
+        } else {
+          handleDragEnd(event);
+        }
       }}
-      onDragMove={onDragMove}
-      onDragOver={onDragOver}
+      onDragMove={(event) => {
+        if (event.active.data.current?.type === "data-grid-row") {
+          onDragMove?.(event);
+        }
+      }}
+      onDragOver={(event) => {
+        if (event.active.data.current?.type === "data-grid-row") {
+          onDragOver?.(event);
+        }
+      }}
       onDragStart={(event) => {
-        setIsDraggingRow(true);
-        pickUpRow(event.active.id);
-        onDragStart?.(event);
+        if (event.active.data.current?.type === "data-grid-row") {
+          setIsDraggingRow(true);
+          setCarriedColumn(null);
+          pickUpRow(event.active.id);
+          onDragStart?.(event);
+        } else if (event.active.data.current?.type === "data-grid-column") {
+          setIsDraggingColumn(true);
+          setCarried(null);
+          const columnId = String(event.active.data.current.columnId);
+          const headerCell = Array.from(
+            tableContainerRef.current?.querySelectorAll<HTMLElement>(
+              "thead th[data-col-id]",
+            ) ?? [],
+          ).find((candidate) => candidate.dataset.colId === columnId);
+          const header = table.getFlatHeaders().find(
+            (candidate) => candidate.column.id === columnId,
+          );
+
+          if (headerCell && header) {
+            const rect = headerCell.getBoundingClientRect();
+            const renderedRows = Array.from(
+              tableContainerRef.current?.querySelectorAll<HTMLElement>(
+                "tbody tr[data-row-id]",
+              ) ?? [],
+            );
+            const rowHeights = table.getRowModel().rows.map((row) => {
+              const renderedRow = renderedRows.find(
+                (candidate) => candidate.dataset.rowId === row.id,
+              );
+              return renderedRow?.getBoundingClientRect().height ?? 40;
+            });
+
+            setCarriedColumn({
+              id: columnId,
+              width: rect.width,
+              headerHeight: rect.height,
+              rowHeights,
+              title: getColumnHeaderLabel(header.column),
+            });
+          }
+        }
       }}
       sensors={sensors}
     >
       <DataGridTableViewport
         viewportRef={tableContainerRef}
-        className={isDraggingRow ? "relative cursor-grabbing [&_*]:cursor-grabbing!" : "relative"}
+        disableColumnDnd
+        className={
+          isDraggingRow || isDraggingColumn
+            ? "relative cursor-grabbing [&_*]:cursor-grabbing!"
+            : "relative"
+        }
       >
         <DataGridTableBase>
           <DataGridTableHead>
@@ -591,23 +686,52 @@ function DataGridTableDndRows<TData extends object>({
               .map((headerGroup: HeaderGroup<DataGridFeatures, TData>, index) => {
                 return (
                   <DataGridTableHeadRow key={index} rowId={headerGroup.id}>
-                    {headerGroup.headers.map((header, index) => {
-                      const { column } = header;
+                    {props.tableLayout?.columnsDraggable ? (
+                      <SortableContext
+                        items={table
+                          .getVisibleLeafColumns()
+                          .map((column) => getDataGridColumnSortableId(column.id))}
+                        strategy={horizontalListSortingStrategy}
+                      >
+                        {headerGroup.headers.map((header, index) => {
+                          const { column } = header;
 
-                      return (
-                        <DataGridTableHeadRowCell header={header} key={index}>
-                          {header.isPlaceholder ? null : props.tableLayout?.columnsResizable &&
-                            column.getCanResize() ? (
-                            <>{flexRender(header.column.columnDef.header, header.getContext())}</>
-                          ) : (
-                            flexRender(header.column.columnDef.header, header.getContext())
-                          )}
-                          {props.tableLayout?.columnsResizable && column.getCanResize() && (
-                            <DataGridTableHeadRowCellResize header={header} />
-                          )}
-                        </DataGridTableHeadRowCell>
-                      );
-                    })}
+                          return (
+                            <DataGridTableHeadRowCell header={header} key={index}>
+                              {header.isPlaceholder
+                                ? null
+                                : flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext(),
+                                  )}
+                              {props.tableLayout?.columnsResizable &&
+                                column.getCanResize() && (
+                                  <DataGridTableHeadRowCellResize header={header} />
+                                )}
+                            </DataGridTableHeadRowCell>
+                          );
+                        })}
+                      </SortableContext>
+                    ) : (
+                      headerGroup.headers.map((header, index) => {
+                        const { column } = header;
+
+                        return (
+                          <DataGridTableHeadRowCell header={header} key={index}>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
+                                )}
+                            {props.tableLayout?.columnsResizable &&
+                              column.getCanResize() && (
+                                <DataGridTableHeadRowCellResize header={header} />
+                              )}
+                          </DataGridTableHeadRowCell>
+                        );
+                      })
+                    )}
                     <DataGridTableFillHeadCell />
                   </DataGridTableHeadRow>
                 );
@@ -680,6 +804,64 @@ function DataGridTableDndRows<TData extends object>({
                           </td>
                         ))}
                     </tr>
+                  </tbody>
+                </table>
+              ) : carriedColumn ? (
+                <table
+                  aria-hidden="true"
+                  className="pointer-events-none table-fixed border-separate border-spacing-0 rounded-md shadow-xl ring-1 ring-foreground/10"
+                  style={{
+                    width: carriedColumn.width,
+                    opacity: 0.92,
+                  }}
+                >
+                  <colgroup>
+                    <col style={{ width: carriedColumn.width }} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th
+                        className="bg-muted text-foreground border-border overflow-hidden rounded-t-md border-x border-t px-3 text-left align-middle font-medium"
+                        style={{ height: carriedColumn.headerHeight }}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <GripVerticalIcon className="text-muted-foreground size-3.5 shrink-0" />
+                          <span className="truncate">
+                            {carriedColumn.title}
+                          </span>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {table.getRowModel().rows.map((row, index) => {
+                      const cell = row
+                        .getVisibleCells()
+                        .find(
+                          (candidate) =>
+                            candidate.column.id === carriedColumn.id,
+                        );
+
+                      if (!cell) return null;
+
+                      return (
+                        <tr
+                          key={row.id}
+                          style={{
+                            height: carriedColumn.rowHeights[index] ?? 40,
+                          }}
+                        >
+                          <td className="bg-background border-border overflow-hidden border-x border-b px-3 py-2 align-middle">
+                            <div className="truncate">
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext(),
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               ) : null}

@@ -356,3 +356,26 @@ tableLayout={{
 </DataGrid>
 )
 }
+
+## Built-in drag handles
+
+For grids using the standard table renderer, set `tableLayout.columnsDraggable` to
+`true`. The grid adds accessible drag handles to reorderable leaf-column headers,
+including when the table body uses row drag-and-drop or virtualization:
+
+```tsx
+<DataGrid table={table} tableLayout={{ columnsDraggable: true }}>
+  <DataGridContainer>
+    <DataGridScrollArea>
+      <DataGridTable />
+    </DataGridScrollArea>
+  </DataGridContainer>
+</DataGrid>
+```
+
+The table updates `columnOrder` directly, so `useDataGridColumnState` can persist
+the new order through its existing `onReorder` callback. When column pinning is
+enabled, dropping onto a pinned column moves the dragged column into that pinned
+section; dropping it onto an unpinned column unpins it. The explicit
+`DataGridTableDnd` example above remains available when the application needs to
+own its drag-end callback.

@@ -1,6 +1,15 @@
 "use client";
 
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import type {
   CSSProperties,
   MouseEvent as ReactMouseEvent,
@@ -9,6 +18,27 @@ import type {
   Ref,
   RefObject,
 } from "react";
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  pointerWithin,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS as DndCSS } from "@dnd-kit/utilities";
 import {
   dataGridCellSelectionCellClasses,
   getDataGridCellSelectionCellAttrs,
@@ -24,7 +54,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import { DataGridRowPinButton } from "@/components/row-action/data-grid-row-pin-button";
-import { PlusIcon } from "lucide-react";
+import { GripVerticalIcon, PlusIcon } from "lucide-react";
 
 // Static spacing lookups; called once per cell, so they stay plain string
 // picks instead of runtime variant machinery.
@@ -635,45 +665,43 @@ function DataGridTableBase({ children }: { children: ReactNode }) {
    * re-renders of the body.
    */
   const columnSizeVars = useMemo(() => {
-    if (!props.tableLayout?.columnsResizable) return undefined;
-    const headers = table.getFlatHeaders();
-    // A meta.fillWidth column absorbs the filler strip: its size variable
-    // carries the unitless fill amount, so every consumer of
-    // calc(var(--col-X-size) * 1px) stretches with the container while the
-    // fill cells collapse to zero.
-    const fillColumnId = table
-      .getVisibleLeafColumns()
-      .find((column) => column.columnDef.meta?.fillWidth)?.id;
-    const colSizes: Record<string, number | string> = {};
-    for (let i = 0; i < headers.length; i++) {
-      const header = headers[i]!;
-      colSizes[`--header-${header.id}-size`] = header.getSize();
-      colSizes[`--col-${header.column.id}-size`] =
-        header.column.id === fillColumnId
-          ? `calc(${header.column.getSize()} + var(--data-grid-fill, 0))`
-          : header.column.getSize();
-    }
-    return colSizes;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    props.tableLayout?.columnsResizable,
-    // Visibility/order/pinning change the flat header set, so a column shown
-    // after mount must get its size variable even though sizing is untouched.
+  if (!props.tableLayout?.columnsResizable) return undefined;
+  const headers = table.getFlatHeaders();
 
-    table.state.columnSizing,
+  // Every column marked meta.fillWidth gets a share of the free space,
+  // proportional to its own size.
+  const fillColumns = table
+    .getVisibleLeafColumns()
+    .filter((column) => column.columnDef.meta?.fillWidth);
+  const fillTotal = fillColumns.reduce((sum, column) => sum + column.getSize(), 0);
+  const fillShare = new Map<string, number>(
+    fillTotal > 0
+      ? fillColumns.map((column) => [column.id, column.getSize() / fillTotal] as const)
+      : [],
+  );
 
-    table.state.columnVisibility,
+  const colSizes: Record<string, number | string> = {};
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i]!;
+    const share = fillShare.get(header.column.id);
+    const size =
+      share === undefined
+        ? header.column.getSize()
+        : `calc(${header.column.getSize()} + var(--data-grid-fill, 0) * ${share})`;
 
-    table.state.columnOrder,
-
-    table.state.columnPinning,
-    // A def swap can change a column's `size` without touching sizing
-    // STATE; without this dep the CSS variables keep the old widths. For a
-    // consumer defining columns inline the memo degrades to per-render
-    // recompute, which is the safe direction.
-
-    table.options.columns,
-  ]);
+    colSizes[`--header-${header.id}-size`] = size;
+    colSizes[`--col-${header.column.id}-size`] = size;
+  }
+  return colSizes;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  props.tableLayout?.columnsResizable,
+  table.state.columnSizing,
+  table.state.columnVisibility,
+  table.state.columnOrder,
+  table.state.columnPinning,
+  table.options.columns,
+]);
 
   // With cell selection on, the table announces as a grid so the tds compute
   // as gridcells and aria-selected applies; existing grids keep their plain
@@ -751,14 +779,27 @@ function DataGridTableViewport({
   className,
   viewportRef,
   style,
+  disableColumnDnd = false,
 }: {
   children: ReactNode;
   className?: string;
   viewportRef?: Ref<HTMLDivElement>;
   style?: CSSProperties;
+  /** Keeps a parent-owned DndContext in control, as in DataGridTableDnd. */
+  disableColumnDnd?: boolean;
 }) {
   const { props, table, autoSize } = useDataGrid();
   const isColumnsResizable = !!props.tableLayout?.columnsResizable;
+  const dndId = useId();
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 120, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
   const viewportNodeRef = useRef<HTMLDivElement | null>(null);
   const fillStateRef = useRef({ containerWidth: 0, appliedFill: -1 });
   const stopContainerObserverRef = useRef<(() => void) | null>(null);
@@ -846,15 +887,156 @@ function DataGridTableViewport({
         ...style,
       }}
     >
-      {children}
+      {props.tableLayout?.columnsDraggable && !disableColumnDnd ? (
+        <DndContext
+          id={dndId}
+          collisionDetection={dataGridColumnCollisionDetection}
+          modifiers={[restrictToHorizontalAxis]}
+          sensors={sensors}
+          onDragEnd={(event) =>
+            reorderDataGridColumn(table, event, !!props.tableLayout?.columnsPinnable)
+          }
+        >
+          <SortableContext
+            items={getDataGridTableOrderedVisibleColumns(table).map((column) =>
+              getDataGridColumnSortableId(column.id),
+            )}
+            strategy={horizontalListSortingStrategy}
+          >
+            {children}
+          </SortableContext>
+        </DndContext>
+      ) : (
+        children
+      )}
       <DataGridTableResizeIndicator viewportNodeRef={viewportNodeRef} />
     </div>
   );
 }
 
+function canReorderDataGridColumn<TData extends object>(
+  column: Column<DataGridFeatures, TData, unknown>,
+) {
+  return (
+    column.columns.length === 0 &&
+    (column.columnDef as { enableColumnOrdering?: boolean }).enableColumnOrdering !== false
+  );
+}
+
+export function getDataGridColumnSortableId(columnId: string) {
+  return `data-grid-column:${columnId}`;
+}
+
+export function reorderDataGridColumn<TData extends object>(
+  table: DataGridTableInstance<TData>,
+  event: DragEndEvent,
+  pinningEnabled: boolean,
+) {
+  const activeId =
+    event.active.data.current?.type === "data-grid-column"
+      ? String(event.active.data.current.columnId)
+      : null;
+  const overId =
+    event.over?.data.current?.type === "data-grid-column"
+      ? String(event.over.data.current.columnId)
+      : null;
+  if (!activeId || !overId || activeId === overId) return;
+
+  const visibleColumns = getDataGridTableOrderedVisibleColumns(table);
+  const visibleIds = visibleColumns.map((column) => column.id);
+  const activeIndex = visibleIds.indexOf(activeId);
+  const overIndex = visibleIds.indexOf(overId);
+  if (activeIndex < 0 || overIndex < 0) return;
+
+  const activeColumn = table.getColumn(activeId);
+  const overColumn = table.getColumn(overId);
+  if (
+    !activeColumn ||
+    !overColumn ||
+    !canReorderDataGridColumn(activeColumn) ||
+    !canReorderDataGridColumn(overColumn)
+  ) {
+    return;
+  }
+
+  const activePinPosition = activeColumn.getIsPinned() || null;
+  const targetPinPosition = overColumn.getIsPinned() || null;
+  if (
+    activePinPosition !== targetPinPosition &&
+    (!pinningEnabled || !activeColumn.getCanPin())
+  ) {
+    return;
+  }
+
+  if (activePinPosition === targetPinPosition) {
+    const firstCrossedIndex = Math.min(activeIndex, overIndex);
+    const lastCrossedIndex = Math.max(activeIndex, overIndex);
+    if (
+      visibleColumns
+        .slice(firstCrossedIndex, lastCrossedIndex + 1)
+        .some((column) => !canReorderDataGridColumn(column))
+    ) {
+      return;
+    }
+  }
+
+  const nextVisibleOrder = arrayMove(visibleIds, activeIndex, overIndex);
+  const allColumnIds = table.getAllLeafColumns().map((column) => column.id);
+  const nextOrder = table.state.columnOrder.length
+    ? [...table.state.columnOrder]
+    : [...allColumnIds];
+
+  for (const columnId of allColumnIds) {
+    if (!nextOrder.includes(columnId)) nextOrder.push(columnId);
+  }
+
+  const visibleIdSet = new Set(visibleIds);
+  const nextFullOrder = arrayMove(
+    nextOrder,
+    nextOrder.indexOf(activeId),
+    nextOrder.indexOf(overId),
+  );
+
+  const nextPinPosition =
+    activePinPosition === targetPinPosition ? activePinPosition : targetPinPosition;
+
+  if (activePinPosition !== nextPinPosition) {
+    activeColumn.pin(nextPinPosition ?? false);
+  }
+
+  table.setColumnOrder(nextFullOrder);
+
+  if (activePinPosition || targetPinPosition) {
+    const pinning = table.state.columnPinning;
+    const visibleStart = nextVisibleOrder.filter((columnId) => {
+      const column = table.getColumn(columnId);
+      return (columnId === activeId ? nextPinPosition : column?.getIsPinned()) === "start";
+    });
+    const visibleEnd = nextVisibleOrder.filter((columnId) => {
+      const column = table.getColumn(columnId);
+      return (columnId === activeId ? nextPinPosition : column?.getIsPinned()) === "end";
+    });
+
+    table.setColumnPinning({
+      start: [
+        ...pinning.start.filter((columnId) => !visibleIdSet.has(columnId)),
+        ...visibleStart,
+      ],
+      end: [
+        ...pinning.end.filter((columnId) => !visibleIdSet.has(columnId)),
+        ...visibleEnd,
+      ],
+    });
+  }
+}
+
+const dataGridColumnCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length ? pointerCollisions : closestCenter(args);
+};
+
 function DataGridTableHead({ children }: { children: ReactNode }) {
   const { props } = useDataGrid();
-
   return (
     <thead
       className={cn(
@@ -897,9 +1079,21 @@ function DataGridTableHeadRowCell<TData extends object>({
   dndRef?: React.Ref<HTMLTableCellElement>;
   dndStyle?: CSSProperties;
 }) {
-  const { props, table } = useDataGrid();
+  const { i18n, props, table } = useDataGrid();
 
   const { column } = header;
+  const canDragColumn =
+    !!props.tableLayout?.columnsDraggable &&
+    !dndRef &&
+    !header.isPlaceholder &&
+    canReorderDataGridColumn(column);
+  const sortable = useSortable({
+    id: canDragColumn
+      ? getDataGridColumnSortableId(column.id)
+      : `data-grid-header-${header.id}`,
+    disabled: !canDragColumn,
+    data: { type: "data-grid-column", columnId: column.id },
+  });
   const isPinned = column.getIsPinned();
   const isFirstStartPinned = isPinned === "start" && column.getIsFirstColumn("start");
   const isLastStartPinned = isPinned === "start" && column.getIsLastColumn("start");
@@ -915,7 +1109,7 @@ function DataGridTableHeadRowCell<TData extends object>({
 
   return (
     <th
-      ref={dndRef}
+      ref={dndRef ?? (canDragColumn ? sortable.setNodeRef : undefined)}
       scope="col"
       colSpan={header.colSpan > 1 ? header.colSpan : undefined}
       aria-sort={
@@ -944,6 +1138,15 @@ function DataGridTableHeadRowCell<TData extends object>({
         ...(props.tableLayout?.columnsResizable && {
           width: `calc(var(--header-${header.id}-size) * 1px)`,
         }),
+        ...(canDragColumn && {
+          transform: sortable.isDragging
+            ? undefined
+            : DndCSS.Transform.toString(sortable.transform),
+          transition: sortable.transition ?? "transform 160ms cubic-bezier(0.2, 0, 0, 1)",
+          opacity: sortable.isDragging ? 0.28 : sortable.transform ? 0.88 : undefined,
+          zIndex: sortable.transform ? 40 : undefined,
+          willChange: sortable.transform ? "transform" : undefined,
+        }),
         ...(dndStyle ? dndStyle : null),
       }}
       data-pinned={isPinned || undefined}
@@ -952,6 +1155,7 @@ function DataGridTableHeadRowCell<TData extends object>({
       className={cn(
         "text-foreground relative h-10 text-left align-middle font-medium rtl:text-right [&:has([role=checkbox])]:pe-0",
         headerCellSpacing,
+        canDragColumn && "ps-8",
         props.tableLayout?.headerBackground && "bg-muted",
         props.tableLayout?.cellBorder && "border-e",
         // The resize filler column follows the center group, and a border on
@@ -984,6 +1188,17 @@ function DataGridTableHeadRowCell<TData extends object>({
         column.getIndex() === 0 || isLastVisibleColumn ? props.tableClassNames?.edgeCell : "",
       )}
     >
+      {canDragColumn && (
+        <button
+          type="button"
+          aria-label={i18n.labels.dragToReorder}
+          className="text-muted-foreground hover:text-foreground absolute start-1 top-1/2 z-10 -translate-y-1/2 cursor-grab touch-none rounded p-1 active:cursor-grabbing"
+          {...sortable.attributes}
+          {...sortable.listeners}
+        >
+          <GripVerticalIcon className="size-3.5" aria-hidden="true" />
+        </button>
+      )}
       {children}
     </th>
   );

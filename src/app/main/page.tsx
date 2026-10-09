@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import {
   DataGrid,
   DataGridContainer,
+  DataGridPagination,
   DataGridScrollArea,
   DataGridTableDndRows,
   useDataGridColumnState,
@@ -428,16 +429,16 @@ export default function MainTable() {
   const tableStateError = error ?? rowStateError ?? columnStateError;
 
   return (
-    <main className="min-h-screen bg-background p-4 sm:p-8">
-      <div className="mx-auto max-w-[1500px] space-y-3">
+    <main className="box-border h-screen overflow-hidden bg-background p-4 sm:p-8">
+      <div className="mx-auto flex h-full max-w-[full] flex-col gap-3">
         <div
           ref={setTableContainer}
-          className="relative overflow-visible rounded-xl border border-border bg-card shadow-xl shadow-foreground/5"
+          className="relative overflow-visible rounded-md border border-border  bg-card shadow-xl shadow-foreground/5"
         >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
             <div>
               <h1 className="text-base font-semibold text-foreground">
-                Employee directory
+                Employee table ({recordCount.toLocaleString()} rows)
               </h1>
               <p className="text-xs text-muted-foreground">
                 Use the filter icon to narrow rows. Click a cell to edit.
@@ -505,6 +506,7 @@ export default function MainTable() {
               columnsResizable: false,
               columnsPinnable: true,
               columnsMovable: true,
+              columnsDraggable: true,
               headerSticky: true,
               rowsDraggable: true,
               rowsPinnable: true,
@@ -526,6 +528,7 @@ export default function MainTable() {
                 />
               </DataGridScrollArea>
             </DataGridContainer>
+            <DataGridPagination />
           </DataGrid>
         </div>
       </div>
